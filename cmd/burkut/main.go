@@ -62,6 +62,7 @@ type CLIConfig struct {
 	OnError       string // Command to run on error
 	WebhookURL    string // Webhook URL for notifications
 	MirrorURLs    string // Comma-separated mirror URLs
+	UseHTTP3      bool   // Use HTTP/3 (QUIC) protocol
 }
 
 func main() {
@@ -146,6 +147,7 @@ func parseFlags() CLIConfig {
 	flag.StringVar(&cfg.OnError, "on-error", "", "Command to run after failed download")
 	flag.StringVar(&cfg.WebhookURL, "webhook", "", "Webhook URL for download notifications")
 	flag.StringVar(&cfg.MirrorURLs, "mirrors", "", "Comma-separated mirror URLs for fallback")
+	flag.BoolVar(&cfg.UseHTTP3, "http3", false, "Use HTTP/3 (QUIC) protocol")
 
 	flag.Usage = printUsage
 	flag.Parse()
@@ -244,12 +246,30 @@ func runDownload(cliCfg CLIConfig, url string) int {
 	// Create HTTP client
 	httpClient := protocol.NewHTTPClient(httpOpts...)
 
+	// HTTP/3 client (optional)
+	var http3Client *protocol.HTTP3Client
+	if cliCfg.UseHTTP3 {
+		if cliCfg.Verbose {
+			fmt.Fprintf(os.Stderr, "Using HTTP/3 (QUIC) protocol\n")
+		}
+		http3Client = protocol.NewHTTP3Client(
+			protocol.WithHTTP3Timeout(cliCfg.Timeout),
+			protocol.WithHTTP3UserAgent(fmt.Sprintf("Burkut/%s", version.Version)),
+		)
+		defer http3Client.Close()
+	}
+
 	// Get file info first
 	if cliCfg.Verbose {
 		fmt.Fprintf(os.Stderr, "Fetching metadata from %s\n", url)
 	}
 
-	meta, err := httpClient.Head(ctx, url)
+	var meta *protocol.Metadata
+	if http3Client != nil {
+		meta, err = http3Client.Head(ctx, url)
+	} else {
+		meta, err = httpClient.Head(ctx, url)
+	}
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: Failed to get file info: %v\n", err)
 		return ExitNetworkError
@@ -518,6 +538,7 @@ Advanced Options:
       --on-error CMD     Run command after failed download
       --webhook URL      Send webhook notification on complete/error
       --mirrors URLs     Comma-separated mirror URLs for fallback
+      --http3            Use HTTP/3 (QUIC) protocol (experimental)
 
 Exit Codes:
   0  Success
