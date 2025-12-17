@@ -56,8 +56,14 @@ func TestParseChecksum(t *testing.T) {
 			wantErr: true,
 		},
 		{
+			name:      "blake3",
+			input:     "blake3:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+			wantAlgo:  AlgorithmBLAKE3,
+			wantValue: "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+		},
+		{
 			name:    "unsupported algorithm",
-			input:   "blake3:abc123",
+			input:   "crc32:abc123",
 			wantErr: true,
 		},
 		{
@@ -130,6 +136,7 @@ func TestCalculateChecksum(t *testing.T) {
 		{AlgorithmMD5, "6fbf9409bd1863ce5834b1efbd782d7e"},
 		{AlgorithmSHA1, "b03997e89ad1a99ab123e1959cc4d9aa0e2fd6dc"},
 		{AlgorithmSHA256, "f4f26c2b8c1bed028cf54f27a5f2f1b9f8d5c0a8b7c6d5e4f3a2b1c0d9e8f7a6"},
+		{AlgorithmBLAKE3, ""},
 	}
 
 	// Note: These expected values need to be calculated for "Hello, Burkut!"

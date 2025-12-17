@@ -35,6 +35,18 @@ const (
 	ExitInterrupted    = 8
 )
 
+// headerList is a custom flag type for multiple headers
+type headerList []string
+
+func (h *headerList) String() string {
+	return strings.Join(*h, ", ")
+}
+
+func (h *headerList) Set(value string) error {
+	*h = append(*h, value)
+	return nil
+}
+
 // CLIConfig holds CLI configuration
 type CLIConfig struct {
 	Output      string
@@ -63,6 +75,10 @@ type CLIConfig struct {
 	WebhookURL    string // Webhook URL for notifications
 	MirrorURLs    string // Comma-separated mirror URLs
 	UseHTTP3      bool   // Use HTTP/3 (QUIC) protocol
+	// Authentication
+	UseNetrc    bool       // Use .netrc for authentication
+	Headers     headerList // Custom headers
+	BasicAuth   string     // Basic auth (user:password)
 }
 
 func main() {
@@ -147,7 +163,14 @@ func parseFlags() CLIConfig {
 	flag.StringVar(&cfg.OnError, "on-error", "", "Command to run after failed download")
 	flag.StringVar(&cfg.WebhookURL, "webhook", "", "Webhook URL for download notifications")
 	flag.StringVar(&cfg.MirrorURLs, "mirrors", "", "Comma-separated mirror URLs for fallback")
-	flag.BoolVar(&cfg.UseHTTP3, "http3", false, "Use HTTP/3 (QUIC) protocol")
+	flag.BoolVar(&cfg.UseHTTP3, "http3", false, "Use HTTP/3 (QUIC) protocol (experimental)")
+
+	// Authentication options
+	flag.BoolVar(&cfg.UseNetrc, "netrc", false, "Use ~/.netrc for authentication")
+	flag.Var(&cfg.Headers, "H", "Add custom header (can be used multiple times)")
+	flag.Var(&cfg.Headers, "header", "Add custom header (can be used multiple times)")
+	flag.StringVar(&cfg.BasicAuth, "u", "", "Basic auth credentials (user:password)")
+	flag.StringVar(&cfg.BasicAuth, "user", "", "Basic auth credentials (user:password)")
 
 	flag.Usage = printUsage
 	flag.Parse()
@@ -240,6 +263,56 @@ func runDownload(cliCfg CLIConfig, url string) int {
 		httpOpts = append(httpOpts, protocol.WithInsecureSkipVerify(true))
 		if cliCfg.Verbose {
 			fmt.Fprintf(os.Stderr, "Warning: TLS certificate verification disabled\n")
+		}
+	}
+
+	// Handle authentication
+	authUser, authPass := "", ""
+
+	// 1. Try netrc first
+	if cliCfg.UseNetrc {
+		netrc, err := config.LoadNetrc()
+		if err != nil {
+			if cliCfg.Verbose {
+				fmt.Fprintf(os.Stderr, "Warning: Could not load netrc: %v\n", err)
+			}
+		} else if login, password, found := netrc.GetCredentials(url); found {
+			authUser, authPass = login, password
+			if cliCfg.Verbose {
+				fmt.Fprintf(os.Stderr, "Using credentials from netrc for %s\n", url)
+			}
+		}
+	}
+
+	// 2. CLI -u/--user overrides netrc
+	if cliCfg.BasicAuth != "" {
+		parts := strings.SplitN(cliCfg.BasicAuth, ":", 2)
+		authUser = parts[0]
+		if len(parts) > 1 {
+			authPass = parts[1]
+		}
+	}
+
+	// Apply authentication
+	if authUser != "" {
+		httpOpts = append(httpOpts, protocol.WithBasicAuth(authUser, authPass))
+		if cliCfg.Verbose {
+			fmt.Fprintf(os.Stderr, "Using Basic auth for user: %s\n", authUser)
+		}
+	}
+
+	// Add custom headers
+	if len(cliCfg.Headers) > 0 {
+		headers := make(map[string]string)
+		for _, h := range cliCfg.Headers {
+			parts := strings.SplitN(h, ":", 2)
+			if len(parts) == 2 {
+				headers[strings.TrimSpace(parts[0])] = strings.TrimSpace(parts[1])
+			}
+		}
+		httpOpts = append(httpOpts, protocol.WithHeaders(headers))
+		if cliCfg.Verbose {
+			fmt.Fprintf(os.Stderr, "Custom headers: %d\n", len(headers))
 		}
 	}
 
@@ -527,12 +600,19 @@ Options:
 
 Advanced Options:
       --limit-rate RATE  Limit download speed (e.g., 10M, 500K)
-      --checksum SUM     Verify file checksum (e.g., sha256:abc123... or just abc123)
+      --checksum SUM     Verify file checksum (e.g., sha256:abc123, blake3:def456)
       --proxy URL        Use proxy (http://host:port or socks5://host:port)
       --no-check-certificate  Skip TLS certificate verification
       --config FILE      Use custom config file
       --profile NAME     Use named profile from config
       --init-config      Generate default config file
+
+Authentication Options:
+  -u, --user USER:PASS   Basic authentication credentials
+      --netrc            Use ~/.netrc for authentication
+  -H, --header HEADER    Add custom header (can be repeated)
+
+Batch & Automation:
   -i, --input-file FILE  Read URLs from file (batch download)
       --on-complete CMD  Run command after successful download
       --on-error CMD     Run command after failed download
@@ -558,10 +638,14 @@ Examples:
   burkut -n 8 https://example.com/large-file.iso
   burkut --limit-rate 1M https://example.com/large.iso
   burkut --checksum sha256:abc123... https://example.com/file.zip
+  burkut --checksum blake3:def456... https://example.com/file.zip
   burkut --proxy http://proxy:8080 https://example.com/file.zip
   burkut --proxy socks5://127.0.0.1:9050 https://example.com/file.zip
   burkut --profile fast https://example.com/file.zip
   burkut --mirrors "https://mirror1.com/f.zip,https://mirror2.com/f.zip" https://example.com/file.zip
+  burkut -u admin:secret https://example.com/protected/file.zip
+  burkut --netrc https://example.com/file.zip
+  burkut -H "X-API-Key: abc123" https://api.example.com/download
 
 Batch Download:
   burkut -i urls.txt                   Download all URLs from file

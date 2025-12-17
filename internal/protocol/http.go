@@ -58,6 +58,54 @@ func WithHeader(key, value string) HTTPClientOption {
 	}
 }
 
+// WithHeaders adds multiple custom headers
+func WithHeaders(headers map[string]string) HTTPClientOption {
+	return func(c *HTTPClient) {
+		for key, value := range headers {
+			c.headers[key] = value
+		}
+	}
+}
+
+// WithBasicAuth sets Basic authentication
+func WithBasicAuth(username, password string) HTTPClientOption {
+	return func(c *HTTPClient) {
+		if username != "" {
+			c.headers["Authorization"] = "Basic " + basicAuth(username, password)
+		}
+	}
+}
+
+// basicAuth encodes username and password for Basic auth header
+func basicAuth(username, password string) string {
+	auth := username + ":" + password
+	return base64Encode([]byte(auth))
+}
+
+// base64Encode encodes bytes to base64 string
+func base64Encode(data []byte) string {
+	const base64Chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/"
+	result := make([]byte, 0, (len(data)+2)/3*4)
+
+	for i := 0; i < len(data); i += 3 {
+		var n uint32
+		remaining := len(data) - i
+
+		if remaining >= 3 {
+			n = uint32(data[i])<<16 | uint32(data[i+1])<<8 | uint32(data[i+2])
+			result = append(result, base64Chars[n>>18], base64Chars[(n>>12)&0x3F], base64Chars[(n>>6)&0x3F], base64Chars[n&0x3F])
+		} else if remaining == 2 {
+			n = uint32(data[i])<<16 | uint32(data[i+1])<<8
+			result = append(result, base64Chars[n>>18], base64Chars[(n>>12)&0x3F], base64Chars[(n>>6)&0x3F], '=')
+		} else {
+			n = uint32(data[i]) << 16
+			result = append(result, base64Chars[n>>18], base64Chars[(n>>12)&0x3F], '=', '=')
+		}
+	}
+
+	return string(result)
+}
+
 // WithTransport sets a custom transport (useful for proxy)
 func WithTransport(transport *http.Transport) HTTPClientOption {
 	return func(c *HTTPClient) {

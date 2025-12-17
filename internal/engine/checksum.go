@@ -11,6 +11,8 @@ import (
 	"io"
 	"os"
 	"strings"
+
+	"github.com/zeebo/blake3"
 )
 
 // ChecksumAlgorithm represents a supported checksum algorithm
@@ -21,6 +23,7 @@ const (
 	AlgorithmSHA1   ChecksumAlgorithm = "sha1"
 	AlgorithmSHA256 ChecksumAlgorithm = "sha256"
 	AlgorithmSHA512 ChecksumAlgorithm = "sha512"
+	AlgorithmBLAKE3 ChecksumAlgorithm = "blake3"
 )
 
 // Checksum represents a checksum value with its algorithm
@@ -46,10 +49,10 @@ func ParseChecksum(s string) (*Checksum, error) {
 
 	// Validate algorithm
 	switch algorithm {
-	case AlgorithmMD5, AlgorithmSHA1, AlgorithmSHA256, AlgorithmSHA512:
+	case AlgorithmMD5, AlgorithmSHA1, AlgorithmSHA256, AlgorithmSHA512, AlgorithmBLAKE3:
 		// Valid
 	default:
-		return nil, fmt.Errorf("unsupported checksum algorithm: %s", algorithm)
+		return nil, fmt.Errorf("unsupported checksum algorithm: %s (supported: md5, sha1, sha256, sha512, blake3)", algorithm)
 	}
 
 	// Validate hex value
@@ -79,6 +82,8 @@ func newHasher(algorithm ChecksumAlgorithm) (hash.Hash, error) {
 		return sha256.New(), nil
 	case AlgorithmSHA512:
 		return sha512.New(), nil
+	case AlgorithmBLAKE3:
+		return blake3.New(), nil
 	default:
 		return nil, fmt.Errorf("unsupported algorithm: %s", algorithm)
 	}
@@ -188,7 +193,8 @@ func DetectAlgorithmFromLength(checksumValue string) ChecksumAlgorithm {
 		return AlgorithmMD5
 	case 40: // SHA1 produces 160-bit (20 bytes = 40 hex chars)
 		return AlgorithmSHA1
-	case 64: // SHA256 produces 256-bit (32 bytes = 64 hex chars)
+	case 64: // SHA256 or BLAKE3 produces 256-bit (32 bytes = 64 hex chars)
+		// Default to SHA256, user can specify blake3: prefix if needed
 		return AlgorithmSHA256
 	case 128: // SHA512 produces 512-bit (64 bytes = 128 hex chars)
 		return AlgorithmSHA512
