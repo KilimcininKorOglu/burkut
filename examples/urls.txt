@@ -1,0 +1,29 @@
+# Burkut URL List File
+# https://github.com/kilimcininkoroglu/burkut
+#
+# Usage: burkut -i urls.txt
+#
+# Supported formats:
+# 1. URL only (filename extracted from URL)
+# 2. URL OUTPUT (space-separated)
+# 3. URL|OUTPUT|CHECKSUM (pipe-separated)
+#
+# Lines starting with # are comments
+# Empty lines are ignored
+
+# Simple URLs (filename from URL)
+https://example.com/file1.zip
+https://example.com/path/to/file2.tar.gz
+
+# URL with custom output filename (space-separated)
+https://example.com/download?id=123 custom-name.zip
+https://releases.example.com/v1.0/app.dmg myapp-v1.0.dmg
+
+# URL with output and checksum verification (pipe-separated)
+https://example.com/important.zip|important.zip|sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+https://example.com/archive.tar.gz|archive.tar.gz|md5:d41d8cd98f00b204e9800998ecf8427e
+
+# Real-world examples (commented out)
+# https://dl.google.com/linux/direct/google-chrome-stable_current_amd64.deb
+# https://github.com/user/repo/releases/download/v1.0.0/app-linux-amd64.tar.gz app.tar.gz
+# https://nodejs.org/dist/v20.0.0/node-v20.0.0-linux-x64.tar.xz|node.tar.xz|sha256:...

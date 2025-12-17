@@ -1,0 +1,86 @@
+# Burkut Configuration File
+# https://github.com/kilimcininkoroglu/burkut
+#
+# Place this file at:
+#   - ~/.config/burkut/config.yaml (Linux/macOS)
+#   - %APPDATA%\burkut\config.yaml (Windows)
+#   - .burkut.yaml (current directory)
+#
+# Or specify with: burkut --config /path/to/config.yaml
+
+# General settings
+general:
+  connections: 4          # Number of parallel connections (1-32)
+  timeout: 30s            # Connection timeout
+  retries: 3              # Number of retries on failure
+  retry_delay: 5s         # Delay between retries
+  user_agent: "Burkut/1.0"
+  continue: true          # Always try to resume downloads
+
+# Bandwidth control
+bandwidth:
+  global_limit: ""        # Global speed limit (e.g., "10M", "500K")
+  per_host_limit: ""      # Per-host speed limit
+  adaptive: false         # Enable adaptive rate limiting
+
+# Proxy settings
+proxy:
+  http: ""                # HTTP proxy (e.g., "http://proxy:8080")
+  https: ""               # HTTPS proxy
+  no_proxy: "localhost,127.0.0.1"  # Bypass proxy for these hosts
+
+# TLS/SSL settings
+tls:
+  verify: true            # Verify server certificates
+  min_version: "1.2"      # Minimum TLS version (1.0, 1.1, 1.2, 1.3)
+  ca_bundle: ""           # Custom CA bundle path
+  client_cert: ""         # Client certificate for mTLS
+  client_key: ""          # Client key for mTLS
+
+# Output settings
+output:
+  directory: ""           # Default download directory (empty = current)
+  progress_style: "bar"   # Progress display: bar, minimal, json, none
+  colors: true            # Enable colored output
+  theme: "auto"           # Color theme: auto, dark, light, mono
+
+# Logging settings
+logging:
+  level: "info"           # Log level: debug, info, warn, error
+  file: ""                # Log file path (empty = stderr only)
+  format: "text"          # Log format: text, json
+
+# Named profiles
+# Use with: burkut --profile <name>
+profiles:
+  # Fast profile - maximum speed
+  fast:
+    connections: 16
+    timeout: 10s
+  
+  # Slow profile - conservative bandwidth
+  slow:
+    connections: 2
+    bandwidth:
+      global_limit: "1M"
+  
+  # Tor profile - download via Tor network
+  tor:
+    connections: 2
+    proxy:
+      http: "socks5://127.0.0.1:9050"
+      https: "socks5://127.0.0.1:9050"
+  
+  # Corporate profile - use corporate proxy
+  corporate:
+    proxy:
+      http: "http://proxy.corp.example.com:8080"
+      https: "http://proxy.corp.example.com:8080"
+      no_proxy: "*.corp.example.com,10.0.0.0/8"
+  
+  # Low bandwidth profile
+  lowbw:
+    connections: 1
+    bandwidth:
+      global_limit: "100K"
+    timeout: 60s

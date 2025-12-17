@@ -29,7 +29,7 @@ for /f "tokens=*" %%i in ('git rev-parse --short HEAD 2^>nul') do set "COMMIT=%%
 if "%COMMIT%"=="" set "COMMIT=unknown"
 
 :: LDFLAGS
-set "LDFLAGS=-ldflags "-s -w -X main.version=%VERSION% -X main.date=%BUILD_TIME% -X main.commit=%COMMIT%""
+set "LDFLAGS=-ldflags "-s -w -X github.com/kilimcininkoroglu/burkut/internal/version.Version=%VERSION% -X github.com/kilimcininkoroglu/burkut/internal/version.Date=%BUILD_TIME% -X github.com/kilimcininkoroglu/burkut/internal/version.Commit=%COMMIT%""
 
 :: Parse command
 if "%1"=="" goto :build
