@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/kilimcininkoroglu/burkut/internal/config"
+	"github.com/kilimcininkoroglu/burkut/internal/download"
 	"github.com/kilimcininkoroglu/burkut/internal/engine"
 	"github.com/kilimcininkoroglu/burkut/internal/protocol"
 	"github.com/kilimcininkoroglu/burkut/internal/ui"
@@ -54,6 +55,8 @@ type CLIConfig struct {
 	InitConfig   bool   // generate default config
 	Proxy        string // HTTP/HTTPS proxy URL
 	NoCheckCert  bool   // Skip TLS certificate verification
+	// Phase 1.0 features
+	InputFile    string // File containing URLs to download
 }
 
 func main() {
@@ -67,6 +70,12 @@ func main() {
 	// Handle --init-config
 	if cliConfig.InitConfig {
 		exitCode := initConfig()
+		os.Exit(exitCode)
+	}
+
+	// Check for batch download mode first
+	if cliConfig.InputFile != "" {
+		exitCode := runBatchDownload(cliConfig)
 		os.Exit(exitCode)
 	}
 
@@ -124,6 +133,10 @@ func parseFlags() CLIConfig {
 	flag.BoolVar(&cfg.InitConfig, "init-config", false, "Generate default config file")
 	flag.StringVar(&cfg.Proxy, "proxy", "", "Proxy URL (http://host:port or socks5://host:port)")
 	flag.BoolVar(&cfg.NoCheckCert, "no-check-certificate", false, "Skip TLS certificate verification")
+
+	// Phase 1.0 options
+	flag.StringVar(&cfg.InputFile, "i", "", "Read URLs from file (one per line)")
+	flag.StringVar(&cfg.InputFile, "input-file", "", "Read URLs from file (one per line)")
 
 	flag.Usage = printUsage
 	flag.Parse()
@@ -437,6 +450,7 @@ Advanced Options:
       --config FILE      Use custom config file
       --profile NAME     Use named profile from config
       --init-config      Generate default config file
+  -i, --input-file FILE  Read URLs from file (batch download)
 
 Exit Codes:
   0  Success
@@ -460,6 +474,184 @@ Examples:
   burkut --proxy socks5://127.0.0.1:9050 https://example.com/file.zip
   burkut --profile fast https://example.com/file.zip
 
+Batch Download:
+  burkut -i urls.txt                   Download all URLs from file
+  burkut -i urls.txt -P /downloads     Download to specific directory
+
+URL File Format (one URL per line):
+  https://example.com/file1.zip
+  https://example.com/file2.zip output.zip
+  https://example.com/file3.zip|custom.zip|sha256:abc123
+
 For more information, visit: https://github.com/kilimcininkoroglu/burkut
 `, version.Full())
+}
+
+// runBatchDownload processes a file containing URLs
+func runBatchDownload(cliCfg CLIConfig) int {
+	// Setup signal handling
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	sigChan := make(chan os.Signal, 1)
+	signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
+
+	go func() {
+		<-sigChan
+		fmt.Fprintln(os.Stderr, "\nInterrupted, stopping downloads...")
+		cancel()
+	}()
+
+	// Load config
+	cfg, err := loadConfig(cliCfg)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error loading config: %v\n", err)
+		return ExitParseError
+	}
+
+	// Create queue and load URLs
+	queue := download.NewQueue(cliCfg.OutputDir)
+	if err := queue.LoadFromFile(cliCfg.InputFile); err != nil {
+		fmt.Fprintf(os.Stderr, "Error loading URL file: %v\n", err)
+		return ExitParseError
+	}
+
+	if queue.Count() == 0 {
+		fmt.Fprintln(os.Stderr, "No URLs found in file")
+		return ExitParseError
+	}
+
+	fmt.Printf("Burkut %s - Batch Download\n", version.Version)
+	fmt.Printf("Loaded %d URLs from %s\n\n", queue.Count(), cliCfg.InputFile)
+
+	// Build HTTP client options
+	httpOpts := buildHTTPOptions(cliCfg, cfg)
+
+	// Create HTTP client
+	httpClient := protocol.NewHTTPClient(httpOpts...)
+
+	// Setup rate limiter
+	var rateLimiter *engine.RateLimiter
+	if cliCfg.LimitRate != "" {
+		bytesPerSec, err := config.ParseBandwidth(cliCfg.LimitRate)
+		if err == nil && bytesPerSec > 0 {
+			rateLimiter = engine.NewRateLimiter(bytesPerSec)
+		}
+	}
+
+	// Process each URL
+	completed := 0
+	failed := 0
+	startTime := time.Now()
+
+	items := queue.Items()
+	for i, item := range items {
+		select {
+		case <-ctx.Done():
+			fmt.Fprintf(os.Stderr, "\nBatch download interrupted\n")
+			return ExitInterrupted
+		default:
+		}
+
+		fmt.Printf("[%d/%d] %s\n", i+1, len(items), item.URL)
+		queue.UpdateStatus(item.ID, download.QueueStatusDownloading)
+
+		// Create downloader config
+		dlConfig := engine.DefaultConfig()
+		dlConfig.Connections = cliCfg.Connections
+		if rateLimiter != nil {
+			dlConfig.RateLimiter = rateLimiter
+		}
+
+		downloader := engine.NewDownloader(dlConfig, httpClient)
+
+		// Setup minimal progress for batch mode
+		if !cliCfg.Quiet {
+			downloader.SetProgressCallback(func(p engine.Progress) {
+				if cliCfg.Progress == "bar" {
+					fmt.Printf("\r  %.1f%% %s/%s %s/s",
+						p.Percent,
+						ui.FormatBytes(p.Downloaded),
+						ui.FormatBytes(p.TotalSize),
+						ui.FormatBytes(p.Speed))
+				}
+			})
+		}
+
+		// Download
+		err := downloader.Download(ctx, item.URL, item.OutputPath)
+
+		if err != nil {
+			queue.SetError(item.ID, err)
+			failed++
+			if !cliCfg.Quiet {
+				fmt.Printf("\r  ✗ Failed: %v\n", err)
+			}
+			continue
+		}
+
+		// Verify checksum if provided
+		if item.Checksum != "" {
+			checksum, parseErr := engine.ParseChecksumAuto(item.Checksum)
+			if parseErr == nil {
+				valid, verifyErr := engine.VerifyChecksum(item.OutputPath, checksum)
+				if verifyErr != nil || !valid {
+					queue.SetError(item.ID, fmt.Errorf("checksum mismatch"))
+					failed++
+					if !cliCfg.Quiet {
+						fmt.Printf("\r  ✗ Checksum mismatch\n")
+					}
+					continue
+				}
+			}
+		}
+
+		queue.UpdateStatus(item.ID, download.QueueStatusCompleted)
+		completed++
+		if !cliCfg.Quiet {
+			fmt.Printf("\r  ✓ Completed\n")
+		}
+	}
+
+	// Print summary
+	elapsed := time.Since(startTime)
+	fmt.Printf("\n")
+	fmt.Printf("Batch download complete:\n")
+	fmt.Printf("  Total:     %d\n", len(items))
+	fmt.Printf("  Completed: %d\n", completed)
+	fmt.Printf("  Failed:    %d\n", failed)
+	fmt.Printf("  Time:      %s\n", elapsed.Round(time.Second))
+
+	if failed > 0 {
+		return ExitGeneralError
+	}
+	return ExitSuccess
+}
+
+// buildHTTPOptions creates HTTP client options from CLI and config
+func buildHTTPOptions(cliCfg CLIConfig, cfg *config.Config) []protocol.HTTPClientOption {
+	opts := []protocol.HTTPClientOption{
+		protocol.WithTimeout(cliCfg.Timeout),
+		protocol.WithUserAgent(fmt.Sprintf("Burkut/%s", version.Version)),
+	}
+
+	// Add proxy
+	proxyURL := cliCfg.Proxy
+	if proxyURL == "" && cfg.Proxy.HTTP != "" {
+		proxyURL = cfg.Proxy.HTTP
+	}
+	if proxyURL != "" {
+		if strings.HasPrefix(proxyURL, "socks5://") {
+			opts = append(opts, protocol.WithSOCKS5Proxy(proxyURL, nil))
+		} else {
+			opts = append(opts, protocol.WithProxy(proxyURL))
+		}
+	}
+
+	// Skip certificate verification
+	if cliCfg.NoCheckCert || !cfg.TLS.Verify {
+		opts = append(opts, protocol.WithInsecureSkipVerify(true))
+	}
+
+	return opts
 }
