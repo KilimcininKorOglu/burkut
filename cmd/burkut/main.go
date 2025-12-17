@@ -61,6 +61,7 @@ type CLIConfig struct {
 	OnComplete    string // Command to run on completion
 	OnError       string // Command to run on error
 	WebhookURL    string // Webhook URL for notifications
+	MirrorURLs    string // Comma-separated mirror URLs
 }
 
 func main() {
@@ -144,6 +145,7 @@ func parseFlags() CLIConfig {
 	flag.StringVar(&cfg.OnComplete, "on-complete", "", "Command to run after successful download")
 	flag.StringVar(&cfg.OnError, "on-error", "", "Command to run after failed download")
 	flag.StringVar(&cfg.WebhookURL, "webhook", "", "Webhook URL for download notifications")
+	flag.StringVar(&cfg.MirrorURLs, "mirrors", "", "Comma-separated mirror URLs for fallback")
 
 	flag.Usage = printUsage
 	flag.Parse()
@@ -297,9 +299,43 @@ func runDownload(cliCfg CLIConfig, url string) int {
 		fmt.Printf("Burkut %s - Downloading\n\n", version.Version)
 	}
 
-	// Start download
+	// Start download (with mirror support)
 	startTime := time.Now()
-	err = downloader.Download(ctx, url, outputPath)
+
+	// Parse mirror URLs if provided
+	var mirrors []string
+	if cliCfg.MirrorURLs != "" {
+		for _, m := range strings.Split(cliCfg.MirrorURLs, ",") {
+			m = strings.TrimSpace(m)
+			if m != "" {
+				mirrors = append(mirrors, m)
+			}
+		}
+	}
+
+	// Try main URL first, then mirrors
+	allURLs := append([]string{url}, mirrors...)
+	for i, downloadURL := range allURLs {
+		if i > 0 {
+			if cliCfg.Verbose || !cliCfg.Quiet {
+				fmt.Fprintf(os.Stderr, "Trying mirror %d/%d: %s\n", i, len(mirrors), downloadURL)
+			}
+		}
+
+		err = downloader.Download(ctx, downloadURL, outputPath)
+		if err == nil {
+			break // Success
+		}
+
+		// Don't try more mirrors if context was cancelled
+		if ctx.Err() != nil {
+			break
+		}
+
+		if cliCfg.Verbose && i < len(allURLs)-1 {
+			fmt.Fprintf(os.Stderr, "Failed: %v, trying next mirror...\n", err)
+		}
+	}
 
 	// Setup hooks
 	hookManager := setupHooks(cliCfg)
@@ -481,6 +517,7 @@ Advanced Options:
       --on-complete CMD  Run command after successful download
       --on-error CMD     Run command after failed download
       --webhook URL      Send webhook notification on complete/error
+      --mirrors URLs     Comma-separated mirror URLs for fallback
 
 Exit Codes:
   0  Success
@@ -503,6 +540,7 @@ Examples:
   burkut --proxy http://proxy:8080 https://example.com/file.zip
   burkut --proxy socks5://127.0.0.1:9050 https://example.com/file.zip
   burkut --profile fast https://example.com/file.zip
+  burkut --mirrors "https://mirror1.com/f.zip,https://mirror2.com/f.zip" https://example.com/file.zip
 
 Batch Download:
   burkut -i urls.txt                   Download all URLs from file
