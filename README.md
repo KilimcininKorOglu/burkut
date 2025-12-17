@@ -4,17 +4,19 @@
 
 ## ✨ Features
 
-- 📥 **HTTP/HTTPS Downloads** with parallel chunks
-- ⚡ **HTTP/3 (QUIC)** experimental support
-- 🔄 **Smart Resume** for interrupted downloads
-- 📊 **Progress Display** (bar, minimal, json modes)
-- 🔀 **Mirror Support** with automatic failover
-- 📦 **Batch Downloads** from URL list files
-- 🔐 **Checksum Verification** (MD5, SHA1, SHA256, SHA512)
-- ⏱️ **Rate Limiting** for bandwidth control
-- 🌍 **Proxy Support** (HTTP, SOCKS5)
-- 🪝 **Hooks & Webhooks** for notifications
-- ⚙️ **YAML Config** with profiles
+- 📥 **Multi-Protocol** - HTTP, HTTPS, FTP, SFTP downloads
+- ⚡ **HTTP/3 (QUIC)** - Experimental next-gen protocol support
+- 🔄 **Smart Resume** - Automatically resume interrupted downloads
+- 🚀 **Parallel Downloads** - Split files into chunks for faster downloads
+- 📊 **Progress Display** - Beautiful progress bars (bar, minimal, json modes)
+- 🔀 **Mirror Support** - Automatic failover to backup URLs
+- 📦 **Batch Downloads** - Download multiple files from URL lists
+- 🔐 **Checksum Verification** - MD5, SHA1, SHA256, SHA512, BLAKE3
+- ⏱️ **Rate Limiting** - Control bandwidth usage
+- 🌍 **Proxy Support** - HTTP and SOCKS5 proxies
+- 🔑 **Authentication** - Basic auth, netrc, custom headers
+- 🪝 **Hooks & Webhooks** - Run commands or send notifications
+- ⚙️ **YAML Config** - Profiles for different use cases
 
 ## 📦 Installation
 
@@ -57,7 +59,7 @@ Options:
 
 Advanced:
   --limit-rate RATE        Speed limit (e.g., 10M, 500K)
-  --checksum SUM           Verify checksum
+  --checksum SUM           Verify checksum (sha256:..., blake3:...)
   --proxy URL              HTTP/SOCKS5 proxy
   --mirrors URLs           Fallback mirrors (comma-separated)
   -i, --input-file FILE    Batch download from file
@@ -66,6 +68,11 @@ Advanced:
   --http3                  Use HTTP/3 (experimental)
   --config FILE            Custom config file
   --profile NAME           Use config profile
+
+Authentication:
+  -u, --user USER:PASS     Basic authentication
+  --netrc                  Use ~/.netrc for credentials
+  -H, --header HEADER      Custom header (repeatable)
 ```
 
 ## 📋 Examples
@@ -73,8 +80,9 @@ Advanced:
 ```bash
 # Checksum verification
 burkut --checksum sha256:abc123... https://example.com/file.zip
+burkut --checksum blake3:def456... https://example.com/file.zip
 
-# Via SOCKS5 proxy
+# Via proxy
 burkut --proxy socks5://127.0.0.1:9050 https://example.com/file.zip
 
 # With mirrors
@@ -85,6 +93,15 @@ burkut -i urls.txt -P /downloads
 
 # Webhook notification
 burkut --webhook https://hooks.slack.com/xxx https://example.com/file.zip
+
+# Authentication
+burkut -u admin:secret https://example.com/protected/file.zip
+burkut --netrc https://example.com/file.zip
+burkut -H "Authorization: Bearer token123" https://api.example.com/download
+
+# FTP/SFTP
+burkut ftp://ftp.example.com/pub/file.zip
+burkut sftp://user@host.com/path/to/file.tar.gz
 ```
 
 ## ⚙️ Config
@@ -115,6 +132,22 @@ profiles:
 make build              # Current platform
 make build-all-platforms # All platforms
 make test               # Run tests
+```
+
+## 🐚 Shell Completions
+
+```bash
+# Bash
+source completions/burkut.bash
+
+# Zsh
+source completions/burkut.zsh
+
+# Fish
+cp completions/burkut.fish ~/.config/fish/completions/
+
+# PowerShell
+. completions/burkut.ps1
 ```
 
 ## 📄 License
