@@ -3,13 +3,17 @@ package protocol
 
 import (
 	"context"
+	"crypto/tls"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"net/url"
 	"strconv"
 	"strings"
 	"time"
+
+	"golang.org/x/net/proxy"
 )
 
 // Metadata contains information about a remote file
@@ -59,6 +63,98 @@ func WithTransport(transport *http.Transport) HTTPClientOption {
 	return func(c *HTTPClient) {
 		c.client.Transport = transport
 	}
+}
+
+// WithProxy sets an HTTP or HTTPS proxy
+func WithProxy(proxyURL string) HTTPClientOption {
+	return func(c *HTTPClient) {
+		if proxyURL == "" {
+			return
+		}
+
+		parsed, err := url.Parse(proxyURL)
+		if err != nil {
+			return
+		}
+
+		transport := c.getTransport()
+		transport.Proxy = http.ProxyURL(parsed)
+	}
+}
+
+// WithSOCKS5Proxy sets a SOCKS5 proxy
+func WithSOCKS5Proxy(proxyAddr string, auth *proxy.Auth) HTTPClientOption {
+	return func(c *HTTPClient) {
+		if proxyAddr == "" {
+			return
+		}
+
+		// Parse socks5:// URL if provided
+		if strings.HasPrefix(proxyAddr, "socks5://") {
+			parsed, err := url.Parse(proxyAddr)
+			if err != nil {
+				return
+			}
+			proxyAddr = parsed.Host
+			if parsed.User != nil {
+				password, _ := parsed.User.Password()
+				auth = &proxy.Auth{
+					User:     parsed.User.Username(),
+					Password: password,
+				}
+			}
+		}
+
+		dialer, err := proxy.SOCKS5("tcp", proxyAddr, auth, proxy.Direct)
+		if err != nil {
+			return
+		}
+
+		transport := c.getTransport()
+		transport.DialContext = func(ctx context.Context, network, addr string) (net.Conn, error) {
+			return dialer.Dial(network, addr)
+		}
+	}
+}
+
+// WithInsecureSkipVerify disables TLS certificate verification
+func WithInsecureSkipVerify(skip bool) HTTPClientOption {
+	return func(c *HTTPClient) {
+		if !skip {
+			return
+		}
+		transport := c.getTransport()
+		if transport.TLSClientConfig == nil {
+			transport.TLSClientConfig = &tls.Config{}
+		}
+		transport.TLSClientConfig.InsecureSkipVerify = true
+	}
+}
+
+// WithTLSConfig sets custom TLS configuration
+func WithTLSConfig(config *tls.Config) HTTPClientOption {
+	return func(c *HTTPClient) {
+		if config == nil {
+			return
+		}
+		transport := c.getTransport()
+		transport.TLSClientConfig = config
+	}
+}
+
+// getTransport returns the underlying transport, creating one if needed
+func (c *HTTPClient) getTransport() *http.Transport {
+	if t, ok := c.client.Transport.(*http.Transport); ok {
+		return t
+	}
+	// Create new transport and set it
+	t := &http.Transport{
+		MaxIdleConns:        100,
+		MaxIdleConnsPerHost: 10,
+		IdleConnTimeout:     90 * time.Second,
+	}
+	c.client.Transport = t
+	return t
 }
 
 // NewHTTPClient creates a new HTTP client with the given options

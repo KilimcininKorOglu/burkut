@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"strings"
 	"syscall"
 	"time"
 
@@ -46,11 +47,13 @@ type CLIConfig struct {
 	ShowVersion bool
 	ShowHelp    bool
 	// Phase 2 features
-	LimitRate  string // e.g., "10M", "500K"
-	Checksum   string // e.g., "sha256:abc123..."
-	ConfigFile string // custom config file path
-	Profile    string // named profile to use
-	InitConfig bool   // generate default config
+	LimitRate    string // e.g., "10M", "500K"
+	Checksum     string // e.g., "sha256:abc123..."
+	ConfigFile   string // custom config file path
+	Profile      string // named profile to use
+	InitConfig   bool   // generate default config
+	Proxy        string // HTTP/HTTPS proxy URL
+	NoCheckCert  bool   // Skip TLS certificate verification
 }
 
 func main() {
@@ -119,6 +122,8 @@ func parseFlags() CLIConfig {
 	flag.StringVar(&cfg.ConfigFile, "config", "", "Use custom config file")
 	flag.StringVar(&cfg.Profile, "profile", "", "Use named profile from config")
 	flag.BoolVar(&cfg.InitConfig, "init-config", false, "Generate default config file")
+	flag.StringVar(&cfg.Proxy, "proxy", "", "Proxy URL (http://host:port or socks5://host:port)")
+	flag.BoolVar(&cfg.NoCheckCert, "no-check-certificate", false, "Skip TLS certificate verification")
 
 	flag.Usage = printUsage
 	flag.Parse()
@@ -184,11 +189,38 @@ func runDownload(cliCfg CLIConfig, url string) int {
 		}
 	}
 
-	// Create HTTP client
-	httpClient := protocol.NewHTTPClient(
+	// Build HTTP client options
+	httpOpts := []protocol.HTTPClientOption{
 		protocol.WithTimeout(cliCfg.Timeout),
 		protocol.WithUserAgent(fmt.Sprintf("Burkut/%s", version.Version)),
-	)
+	}
+
+	// Add proxy if specified (CLI takes precedence over config)
+	proxyURL := cliCfg.Proxy
+	if proxyURL == "" && cfg.Proxy.HTTP != "" {
+		proxyURL = cfg.Proxy.HTTP
+	}
+	if proxyURL != "" {
+		if strings.HasPrefix(proxyURL, "socks5://") {
+			httpOpts = append(httpOpts, protocol.WithSOCKS5Proxy(proxyURL, nil))
+		} else {
+			httpOpts = append(httpOpts, protocol.WithProxy(proxyURL))
+		}
+		if cliCfg.Verbose {
+			fmt.Fprintf(os.Stderr, "Using proxy: %s\n", proxyURL)
+		}
+	}
+
+	// Skip certificate verification if requested
+	if cliCfg.NoCheckCert || !cfg.TLS.Verify {
+		httpOpts = append(httpOpts, protocol.WithInsecureSkipVerify(true))
+		if cliCfg.Verbose {
+			fmt.Fprintf(os.Stderr, "Warning: TLS certificate verification disabled\n")
+		}
+	}
+
+	// Create HTTP client
+	httpClient := protocol.NewHTTPClient(httpOpts...)
 
 	// Get file info first
 	if cliCfg.Verbose {
@@ -400,6 +432,8 @@ Options:
 Advanced Options:
       --limit-rate RATE  Limit download speed (e.g., 10M, 500K)
       --checksum SUM     Verify file checksum (e.g., sha256:abc123... or just abc123)
+      --proxy URL        Use proxy (http://host:port or socks5://host:port)
+      --no-check-certificate  Skip TLS certificate verification
       --config FILE      Use custom config file
       --profile NAME     Use named profile from config
       --init-config      Generate default config file
@@ -422,8 +456,9 @@ Examples:
   burkut -n 8 https://example.com/large-file.iso
   burkut --limit-rate 1M https://example.com/large.iso
   burkut --checksum sha256:abc123... https://example.com/file.zip
+  burkut --proxy http://proxy:8080 https://example.com/file.zip
+  burkut --proxy socks5://127.0.0.1:9050 https://example.com/file.zip
   burkut --profile fast https://example.com/file.zip
-  burkut --progress=minimal https://example.com/file.zip
 
 For more information, visit: https://github.com/kilimcininkoroglu/burkut
 `, version.Full())
