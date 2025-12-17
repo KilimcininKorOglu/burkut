@@ -17,6 +17,7 @@
 - 🔑 **Authentication** - Basic auth, netrc, custom headers
 - 🪝 **Hooks & Webhooks** - Run commands or send notifications
 - ⚙️ **YAML Config** - Profiles for different use cases
+- 🖥️ **Interactive TUI** - Fullscreen mode with Bubbletea
 
 ## 📦 Installation
 
@@ -102,6 +103,9 @@ burkut -H "Authorization: Bearer token123" https://api.example.com/download
 # FTP/SFTP
 burkut ftp://ftp.example.com/pub/file.zip
 burkut sftp://user@host.com/path/to/file.tar.gz
+
+# Interactive TUI mode
+burkut --tui https://example.com/large-file.iso
 ```
 
 ## ⚙️ Config
