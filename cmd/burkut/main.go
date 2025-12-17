@@ -16,6 +16,7 @@ import (
 	"github.com/kilimcininkoroglu/burkut/internal/config"
 	"github.com/kilimcininkoroglu/burkut/internal/download"
 	"github.com/kilimcininkoroglu/burkut/internal/engine"
+	"github.com/kilimcininkoroglu/burkut/internal/hooks"
 	"github.com/kilimcininkoroglu/burkut/internal/protocol"
 	"github.com/kilimcininkoroglu/burkut/internal/ui"
 	"github.com/kilimcininkoroglu/burkut/internal/version"
@@ -56,7 +57,10 @@ type CLIConfig struct {
 	Proxy        string // HTTP/HTTPS proxy URL
 	NoCheckCert  bool   // Skip TLS certificate verification
 	// Phase 1.0 features
-	InputFile    string // File containing URLs to download
+	InputFile     string // File containing URLs to download
+	OnComplete    string // Command to run on completion
+	OnError       string // Command to run on error
+	WebhookURL    string // Webhook URL for notifications
 }
 
 func main() {
@@ -137,6 +141,9 @@ func parseFlags() CLIConfig {
 	// Phase 1.0 options
 	flag.StringVar(&cfg.InputFile, "i", "", "Read URLs from file (one per line)")
 	flag.StringVar(&cfg.InputFile, "input-file", "", "Read URLs from file (one per line)")
+	flag.StringVar(&cfg.OnComplete, "on-complete", "", "Command to run after successful download")
+	flag.StringVar(&cfg.OnError, "on-error", "", "Command to run after failed download")
+	flag.StringVar(&cfg.WebhookURL, "webhook", "", "Webhook URL for download notifications")
 
 	flag.Usage = printUsage
 	flag.Parse()
@@ -294,8 +301,20 @@ func runDownload(cliCfg CLIConfig, url string) int {
 	startTime := time.Now()
 	err = downloader.Download(ctx, url, outputPath)
 
+	// Setup hooks
+	hookManager := setupHooks(cliCfg)
+	elapsed := time.Since(startTime)
+
 	// Handle result
 	if err != nil {
+		// Execute error hooks
+		if hookManager.Count() > 0 {
+			payload := hooks.CreatePayload(hooks.EventError, url, meta.Filename, outputPath).
+				WithError(err).
+				WithDuration(elapsed)
+			hookManager.ExecuteAsync(ctx, payload)
+		}
+
 		if ctx.Err() == context.Canceled {
 			if progressBar != nil {
 				progressBar.RenderError(os.Stdout, meta.Filename, fmt.Errorf("interrupted"))
@@ -341,6 +360,14 @@ func runDownload(cliCfg CLIConfig, url string) int {
 	// Success
 	finalProgress := downloader.GetProgress()
 	finalProgress.ElapsedTime = time.Since(startTime)
+
+	// Execute completion hooks
+	if hookManager.Count() > 0 {
+		payload := hooks.CreatePayload(hooks.EventComplete, url, meta.Filename, outputPath).
+			WithProgress(finalProgress.Downloaded, finalProgress.TotalSize, finalProgress.Speed, finalProgress.Percent).
+			WithDuration(finalProgress.ElapsedTime)
+		hookManager.ExecuteAsync(ctx, payload)
+	}
 
 	if progressBar != nil && cliCfg.Progress == "bar" {
 		progressBar.RenderComplete(os.Stdout, finalProgress, meta.Filename)
@@ -451,6 +478,9 @@ Advanced Options:
       --profile NAME     Use named profile from config
       --init-config      Generate default config file
   -i, --input-file FILE  Read URLs from file (batch download)
+      --on-complete CMD  Run command after successful download
+      --on-error CMD     Run command after failed download
+      --webhook URL      Send webhook notification on complete/error
 
 Exit Codes:
   0  Success
@@ -654,4 +684,24 @@ func buildHTTPOptions(cliCfg CLIConfig, cfg *config.Config) []protocol.HTTPClien
 	}
 
 	return opts
+}
+
+// setupHooks creates a hook manager from CLI options
+func setupHooks(cliCfg CLIConfig) *hooks.Manager {
+	manager := hooks.NewManager()
+
+	// Add command hooks
+	if cliCfg.OnComplete != "" {
+		manager.AddCommand(cliCfg.OnComplete, hooks.EventComplete)
+	}
+	if cliCfg.OnError != "" {
+		manager.AddCommand(cliCfg.OnError, hooks.EventError)
+	}
+
+	// Add webhook
+	if cliCfg.WebhookURL != "" {
+		manager.AddWebhook(cliCfg.WebhookURL, hooks.EventComplete, hooks.EventError)
+	}
+
+	return manager
 }
