@@ -40,19 +40,21 @@ type ProgressCallback func(Progress)
 
 // DownloaderConfig holds configuration for the downloader
 type DownloaderConfig struct {
-	Connections     int
-	BufferSize      int
+	Connections      int
+	BufferSize       int
 	ProgressInterval time.Duration
-	SaveInterval    time.Duration
+	SaveInterval     time.Duration
+	RateLimiter      *RateLimiter // Optional rate limiter
 }
 
 // DefaultConfig returns default downloader configuration
 func DefaultConfig() DownloaderConfig {
 	return DownloaderConfig{
-		Connections:     4,
-		BufferSize:      32 * 1024, // 32KB buffer
+		Connections:      4,
+		BufferSize:       32 * 1024, // 32KB buffer
 		ProgressInterval: 100 * time.Millisecond,
-		SaveInterval:    5 * time.Second,
+		SaveInterval:     5 * time.Second,
+		RateLimiter:      nil,
 	}
 }
 
@@ -257,6 +259,14 @@ func (d *Downloader) downloadChunk(ctx context.Context, url string, chunk downlo
 
 		n, err := reader.Read(buffer)
 		if n > 0 {
+			// Apply rate limiting if configured
+			if d.config.RateLimiter != nil {
+				if limitErr := d.config.RateLimiter.Acquire(ctx, int64(n)); limitErr != nil {
+					d.state.UpdateChunk(chunk.ID, downloaded, download.ChunkStatusPending)
+					return limitErr
+				}
+			}
+
 			// Write to file
 			if _, writeErr := d.writer.WriteAt(buffer[:n], offset); writeErr != nil {
 				d.state.UpdateChunk(chunk.ID, downloaded, download.ChunkStatusFailed)

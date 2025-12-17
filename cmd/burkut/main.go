@@ -12,6 +12,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/kilimcininkoroglu/burkut/internal/config"
 	"github.com/kilimcininkoroglu/burkut/internal/engine"
 	"github.com/kilimcininkoroglu/burkut/internal/protocol"
 	"github.com/kilimcininkoroglu/burkut/internal/ui"
@@ -31,8 +32,8 @@ const (
 	ExitInterrupted    = 8
 )
 
-// Config holds CLI configuration
-type Config struct {
+// CLIConfig holds CLI configuration
+type CLIConfig struct {
 	Output      string
 	OutputDir   string
 	Continue    bool
@@ -44,19 +45,31 @@ type Config struct {
 	Timeout     time.Duration
 	ShowVersion bool
 	ShowHelp    bool
+	// Phase 2 features
+	LimitRate  string // e.g., "10M", "500K"
+	Checksum   string // e.g., "sha256:abc123..."
+	ConfigFile string // custom config file path
+	Profile    string // named profile to use
+	InitConfig bool   // generate default config
 }
 
 func main() {
-	config := parseFlags()
+	cliConfig := parseFlags()
 
-	if config.ShowVersion {
+	if cliConfig.ShowVersion {
 		fmt.Println(version.Full())
 		os.Exit(ExitSuccess)
 	}
 
-	if config.ShowHelp || flag.NArg() == 0 {
+	// Handle --init-config
+	if cliConfig.InitConfig {
+		exitCode := initConfig()
+		os.Exit(exitCode)
+	}
+
+	if cliConfig.ShowHelp || flag.NArg() == 0 {
 		printUsage()
-		if flag.NArg() == 0 && !config.ShowHelp {
+		if flag.NArg() == 0 && !cliConfig.ShowHelp {
 			os.Exit(ExitParseError)
 		}
 		os.Exit(ExitSuccess)
@@ -71,46 +84,54 @@ func main() {
 	}
 
 	// Run download
-	exitCode := runDownload(config, url)
+	exitCode := runDownload(cliConfig, url)
 	os.Exit(exitCode)
 }
 
-func parseFlags() Config {
-	config := Config{}
+func parseFlags() CLIConfig {
+	cfg := CLIConfig{}
 
-	flag.StringVar(&config.Output, "o", "", "Output filename")
-	flag.StringVar(&config.Output, "output", "", "Output filename")
-	flag.StringVar(&config.OutputDir, "P", ".", "Output directory")
-	flag.StringVar(&config.OutputDir, "output-dir", ".", "Output directory")
-	flag.BoolVar(&config.Continue, "c", false, "Continue/resume download")
-	flag.BoolVar(&config.Continue, "continue", false, "Continue/resume download")
-	flag.IntVar(&config.Connections, "n", 4, "Number of parallel connections")
-	flag.IntVar(&config.Connections, "connections", 4, "Number of parallel connections")
-	flag.BoolVar(&config.Quiet, "q", false, "Quiet mode (no progress)")
-	flag.BoolVar(&config.Quiet, "quiet", false, "Quiet mode (no progress)")
-	flag.BoolVar(&config.Verbose, "v", false, "Verbose output")
-	flag.BoolVar(&config.Verbose, "verbose", false, "Verbose output")
-	flag.BoolVar(&config.NoColor, "no-color", false, "Disable colored output")
-	flag.StringVar(&config.Progress, "progress", "bar", "Progress style: bar, minimal, json, none")
-	flag.DurationVar(&config.Timeout, "T", 30*time.Second, "Connection timeout")
-	flag.DurationVar(&config.Timeout, "timeout", 30*time.Second, "Connection timeout")
-	flag.BoolVar(&config.ShowVersion, "V", false, "Show version")
-	flag.BoolVar(&config.ShowVersion, "version", false, "Show version")
-	flag.BoolVar(&config.ShowHelp, "h", false, "Show help")
-	flag.BoolVar(&config.ShowHelp, "help", false, "Show help")
+	// Basic options
+	flag.StringVar(&cfg.Output, "o", "", "Output filename")
+	flag.StringVar(&cfg.Output, "output", "", "Output filename")
+	flag.StringVar(&cfg.OutputDir, "P", ".", "Output directory")
+	flag.StringVar(&cfg.OutputDir, "output-dir", ".", "Output directory")
+	flag.BoolVar(&cfg.Continue, "c", false, "Continue/resume download")
+	flag.BoolVar(&cfg.Continue, "continue", false, "Continue/resume download")
+	flag.IntVar(&cfg.Connections, "n", 4, "Number of parallel connections")
+	flag.IntVar(&cfg.Connections, "connections", 4, "Number of parallel connections")
+	flag.BoolVar(&cfg.Quiet, "q", false, "Quiet mode (no progress)")
+	flag.BoolVar(&cfg.Quiet, "quiet", false, "Quiet mode (no progress)")
+	flag.BoolVar(&cfg.Verbose, "v", false, "Verbose output")
+	flag.BoolVar(&cfg.Verbose, "verbose", false, "Verbose output")
+	flag.BoolVar(&cfg.NoColor, "no-color", false, "Disable colored output")
+	flag.StringVar(&cfg.Progress, "progress", "bar", "Progress style: bar, minimal, json, none")
+	flag.DurationVar(&cfg.Timeout, "T", 30*time.Second, "Connection timeout")
+	flag.DurationVar(&cfg.Timeout, "timeout", 30*time.Second, "Connection timeout")
+	flag.BoolVar(&cfg.ShowVersion, "V", false, "Show version")
+	flag.BoolVar(&cfg.ShowVersion, "version", false, "Show version")
+	flag.BoolVar(&cfg.ShowHelp, "h", false, "Show help")
+	flag.BoolVar(&cfg.ShowHelp, "help", false, "Show help")
+
+	// Phase 2 options
+	flag.StringVar(&cfg.LimitRate, "limit-rate", "", "Limit download speed (e.g., 10M, 500K)")
+	flag.StringVar(&cfg.Checksum, "checksum", "", "Verify checksum (e.g., sha256:abc123...)")
+	flag.StringVar(&cfg.ConfigFile, "config", "", "Use custom config file")
+	flag.StringVar(&cfg.Profile, "profile", "", "Use named profile from config")
+	flag.BoolVar(&cfg.InitConfig, "init-config", false, "Generate default config file")
 
 	flag.Usage = printUsage
 	flag.Parse()
 
 	// Apply quiet mode
-	if config.Quiet {
-		config.Progress = "none"
+	if cfg.Quiet {
+		cfg.Progress = "none"
 	}
 
-	return config
+	return cfg
 }
 
-func runDownload(config Config, url string) int {
+func runDownload(cliCfg CLIConfig, url string) int {
 	// Setup signal handling for graceful shutdown
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -124,14 +145,53 @@ func runDownload(config Config, url string) int {
 		cancel()
 	}()
 
+	// Load config file (if exists)
+	cfg, err := loadConfig(cliCfg)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error loading config: %v\n", err)
+		return ExitParseError
+	}
+
+	// Parse rate limit
+	var rateLimiter *engine.RateLimiter
+	if cliCfg.LimitRate != "" {
+		bytesPerSec, err := config.ParseBandwidth(cliCfg.LimitRate)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error: Invalid rate limit: %v\n", err)
+			return ExitParseError
+		}
+		rateLimiter = engine.NewRateLimiter(bytesPerSec)
+		if cliCfg.Verbose {
+			fmt.Fprintf(os.Stderr, "Rate limit: %s/s\n", ui.FormatBytes(bytesPerSec))
+		}
+	} else if cfg.Bandwidth.GlobalLimit != "" {
+		bytesPerSec, err := config.ParseBandwidth(cfg.Bandwidth.GlobalLimit)
+		if err == nil && bytesPerSec > 0 {
+			rateLimiter = engine.NewRateLimiter(bytesPerSec)
+		}
+	}
+
+	// Parse expected checksum
+	var expectedChecksum *engine.Checksum
+	if cliCfg.Checksum != "" {
+		expectedChecksum, err = engine.ParseChecksumAuto(cliCfg.Checksum)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error: Invalid checksum: %v\n", err)
+			return ExitParseError
+		}
+		if cliCfg.Verbose {
+			fmt.Fprintf(os.Stderr, "Expected checksum: %s\n", expectedChecksum.String())
+		}
+	}
+
 	// Create HTTP client
 	httpClient := protocol.NewHTTPClient(
-		protocol.WithTimeout(config.Timeout),
+		protocol.WithTimeout(cliCfg.Timeout),
 		protocol.WithUserAgent(fmt.Sprintf("Burkut/%s", version.Version)),
 	)
 
 	// Get file info first
-	if config.Verbose {
+	if cliCfg.Verbose {
 		fmt.Fprintf(os.Stderr, "Fetching metadata from %s\n", url)
 	}
 
@@ -142,9 +202,9 @@ func runDownload(config Config, url string) int {
 	}
 
 	// Determine output path
-	outputPath := determineOutputPath(config, meta.Filename)
+	outputPath := determineOutputPath(cliCfg, meta.Filename)
 
-	if config.Verbose {
+	if cliCfg.Verbose {
 		fmt.Fprintf(os.Stderr, "Filename: %s\n", meta.Filename)
 		fmt.Fprintf(os.Stderr, "Size: %s\n", ui.FormatBytes(meta.ContentLength))
 		fmt.Fprintf(os.Stderr, "Resume supported: %v\n", meta.AcceptRanges)
@@ -153,20 +213,23 @@ func runDownload(config Config, url string) int {
 
 	// Create downloader
 	downloaderConfig := engine.DefaultConfig()
-	downloaderConfig.Connections = config.Connections
+	downloaderConfig.Connections = cliCfg.Connections
+	if rateLimiter != nil {
+		downloaderConfig.RateLimiter = rateLimiter
+	}
 
 	downloader := engine.NewDownloader(downloaderConfig, httpClient)
 
 	// Setup progress display
 	var progressBar *ui.ProgressBar
-	if config.Progress != "none" {
+	if cliCfg.Progress != "none" {
 		progressBar = ui.NewProgressBar(
-			ui.WithNoColor(config.NoColor),
-			ui.WithChunks(config.Verbose),
+			ui.WithNoColor(cliCfg.NoColor),
+			ui.WithChunks(cliCfg.Verbose),
 		)
 
 		downloader.SetProgressCallback(func(p engine.Progress) {
-			switch config.Progress {
+			switch cliCfg.Progress {
 			case "bar":
 				progressBar.Render(os.Stdout, p, meta.Filename)
 			case "minimal":
@@ -178,7 +241,7 @@ func runDownload(config Config, url string) int {
 	}
 
 	// Print header
-	if !config.Quiet && config.Progress == "bar" {
+	if !cliCfg.Quiet && cliCfg.Progress == "bar" {
 		fmt.Printf("Burkut %s - Downloading\n\n", version.Version)
 	}
 
@@ -203,30 +266,113 @@ func runDownload(config Config, url string) int {
 		return ExitNetworkError
 	}
 
+	// Verify checksum if provided
+	if expectedChecksum != nil {
+		if cliCfg.Verbose || cliCfg.Progress != "none" {
+			fmt.Fprintf(os.Stderr, "Verifying checksum (%s)...\n", expectedChecksum.Algorithm)
+		}
+
+		valid, err := engine.VerifyChecksum(outputPath, expectedChecksum)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error: Failed to verify checksum: %v\n", err)
+			return ExitGeneralError
+		}
+
+		if !valid {
+			actual, _ := engine.CalculateChecksum(outputPath, expectedChecksum.Algorithm)
+			fmt.Fprintf(os.Stderr, "Error: Checksum mismatch!\n")
+			fmt.Fprintf(os.Stderr, "  Expected: %s\n", expectedChecksum.Value)
+			if actual != nil {
+				fmt.Fprintf(os.Stderr, "  Actual:   %s\n", actual.Value)
+			}
+			return ExitChecksumError
+		}
+
+		if cliCfg.Verbose {
+			fmt.Fprintf(os.Stderr, "Checksum verified successfully!\n")
+		}
+	}
+
 	// Success
 	finalProgress := downloader.GetProgress()
 	finalProgress.ElapsedTime = time.Since(startTime)
 
-	if progressBar != nil && config.Progress == "bar" {
+	if progressBar != nil && cliCfg.Progress == "bar" {
 		progressBar.RenderComplete(os.Stdout, finalProgress, meta.Filename)
-	} else if !config.Quiet {
+	} else if !cliCfg.Quiet {
 		fmt.Printf("\nDownload complete: %s (%s)\n", outputPath, ui.FormatBytes(meta.ContentLength))
 	}
 
 	return ExitSuccess
 }
 
-func determineOutputPath(config Config, filename string) string {
-	// Use custom output name if specified
-	if config.Output != "" {
-		if filepath.IsAbs(config.Output) {
-			return config.Output
+// loadConfig loads configuration from file and applies CLI overrides
+func loadConfig(cliCfg CLIConfig) (*config.Config, error) {
+	var cfg *config.Config
+	var err error
+
+	if cliCfg.ConfigFile != "" {
+		// Load from specified config file
+		cfg = config.DefaultConfig()
+		if err = cfg.LoadFile(cliCfg.ConfigFile); err != nil {
+			return nil, err
 		}
-		return filepath.Join(config.OutputDir, config.Output)
+	} else {
+		// Try to load from default locations
+		cfg, err = config.Load()
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	// Apply profile if specified
+	if cliCfg.Profile != "" {
+		if err = cfg.ApplyProfile(cliCfg.Profile); err != nil {
+			return nil, err
+		}
+	}
+
+	return cfg, nil
+}
+
+// initConfig generates a default configuration file
+func initConfig() int {
+	configPath, err := config.GetDefaultConfigPath()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error: Cannot determine config path: %v\n", err)
+		return ExitGeneralError
+	}
+
+	// Check if file already exists
+	if _, err := os.Stat(configPath); err == nil {
+		fmt.Fprintf(os.Stderr, "Config file already exists: %s\n", configPath)
+		fmt.Fprintf(os.Stderr, "Use --config to specify a different file.\n")
+		return ExitGeneralError
+	}
+
+	// Create default config
+	cfg := config.DefaultConfig()
+	if err := cfg.Save(configPath); err != nil {
+		fmt.Fprintf(os.Stderr, "Error: Failed to save config: %v\n", err)
+		return ExitGeneralError
+	}
+
+	fmt.Printf("Created default config file: %s\n", configPath)
+	fmt.Println("\nYou can customize your settings there.")
+	return ExitSuccess
+}
+
+func determineOutputPath(cfg CLIConfig, filename string) string {
+	// Use custom output name if specified
+	if cfg.Output != "" {
+		if filepath.IsAbs(cfg.Output) {
+			return cfg.Output
+		}
+		return filepath.Join(cfg.OutputDir, cfg.Output)
 	}
 
 	// Use filename from server
-	return filepath.Join(config.OutputDir, filename)
+	return filepath.Join(cfg.OutputDir, filename)
 }
 
 func printUsage() {
@@ -251,6 +397,13 @@ Options:
   -h, --help             Show this help message
   -V, --version          Show version information
 
+Advanced Options:
+      --limit-rate RATE  Limit download speed (e.g., 10M, 500K)
+      --checksum SUM     Verify file checksum (e.g., sha256:abc123... or just abc123)
+      --config FILE      Use custom config file
+      --profile NAME     Use named profile from config
+      --init-config      Generate default config file
+
 Exit Codes:
   0  Success
   1  General error
@@ -267,8 +420,10 @@ Examples:
   burkut -o myfile.zip https://example.com/file.zip
   burkut -c https://example.com/large-file.iso
   burkut -n 8 https://example.com/large-file.iso
+  burkut --limit-rate 1M https://example.com/large.iso
+  burkut --checksum sha256:abc123... https://example.com/file.zip
+  burkut --profile fast https://example.com/file.zip
   burkut --progress=minimal https://example.com/file.zip
-  burkut -q https://example.com/file.zip > /dev/null
 
 For more information, visit: https://github.com/kilimcininkoroglu/burkut
 `, version.Full())
