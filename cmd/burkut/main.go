@@ -18,6 +18,7 @@ import (
 	"github.com/kilimcininkoroglu/burkut/internal/engine"
 	"github.com/kilimcininkoroglu/burkut/internal/hooks"
 	"github.com/kilimcininkoroglu/burkut/internal/protocol"
+	"github.com/kilimcininkoroglu/burkut/internal/tui"
 	"github.com/kilimcininkoroglu/burkut/internal/ui"
 	"github.com/kilimcininkoroglu/burkut/internal/version"
 )
@@ -79,6 +80,8 @@ type CLIConfig struct {
 	UseNetrc    bool       // Use .netrc for authentication
 	Headers     headerList // Custom headers
 	BasicAuth   string     // Basic auth (user:password)
+	// TUI
+	UseTUI bool // Use interactive TUI mode
 }
 
 func main() {
@@ -118,7 +121,12 @@ func main() {
 	}
 
 	// Run download
-	exitCode := runDownload(cliConfig, url)
+	var exitCode int
+	if cliConfig.UseTUI {
+		exitCode = runDownloadTUI(cliConfig, url)
+	} else {
+		exitCode = runDownload(cliConfig, url)
+	}
 	os.Exit(exitCode)
 }
 
@@ -171,6 +179,9 @@ func parseFlags() CLIConfig {
 	flag.Var(&cfg.Headers, "header", "Add custom header (can be used multiple times)")
 	flag.StringVar(&cfg.BasicAuth, "u", "", "Basic auth credentials (user:password)")
 	flag.StringVar(&cfg.BasicAuth, "user", "", "Basic auth credentials (user:password)")
+
+	// TUI option
+	flag.BoolVar(&cfg.UseTUI, "tui", false, "Use interactive TUI mode")
 
 	flag.Usage = printUsage
 	flag.Parse()
@@ -620,6 +631,9 @@ Batch & Automation:
       --mirrors URLs     Comma-separated mirror URLs for fallback
       --http3            Use HTTP/3 (QUIC) protocol (experimental)
 
+Interface:
+      --tui              Use interactive TUI mode (fullscreen)
+
 Exit Codes:
   0  Success
   1  General error
@@ -646,6 +660,7 @@ Examples:
   burkut -u admin:secret https://example.com/protected/file.zip
   burkut --netrc https://example.com/file.zip
   burkut -H "X-API-Key: abc123" https://api.example.com/download
+  burkut --tui https://example.com/large-file.iso
 
 Batch Download:
   burkut -i urls.txt                   Download all URLs from file
@@ -847,4 +862,149 @@ func setupHooks(cliCfg CLIConfig) *hooks.Manager {
 	}
 
 	return manager
+}
+
+// runDownloadTUI runs the download with interactive TUI
+func runDownloadTUI(cliCfg CLIConfig, url string) int {
+	// Load config
+	cfg, err := loadConfig(cliCfg)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error loading config: %v\n", err)
+		return ExitParseError
+	}
+
+	// Build HTTP client options
+	httpOpts := []protocol.HTTPClientOption{
+		protocol.WithTimeout(cliCfg.Timeout),
+		protocol.WithUserAgent(fmt.Sprintf("Burkut/%s", version.Version)),
+	}
+
+	// Add proxy
+	proxyURL := cliCfg.Proxy
+	if proxyURL == "" && cfg.Proxy.HTTP != "" {
+		proxyURL = cfg.Proxy.HTTP
+	}
+	if proxyURL != "" {
+		if strings.HasPrefix(proxyURL, "socks5://") {
+			httpOpts = append(httpOpts, protocol.WithSOCKS5Proxy(proxyURL, nil))
+		} else {
+			httpOpts = append(httpOpts, protocol.WithProxy(proxyURL))
+		}
+	}
+
+	// Skip certificate verification
+	if cliCfg.NoCheckCert || !cfg.TLS.Verify {
+		httpOpts = append(httpOpts, protocol.WithInsecureSkipVerify(true))
+	}
+
+	// Handle authentication
+	if cliCfg.UseNetrc {
+		netrc, err := config.LoadNetrc()
+		if err == nil {
+			if login, password, found := netrc.GetCredentials(url); found {
+				httpOpts = append(httpOpts, protocol.WithBasicAuth(login, password))
+			}
+		}
+	}
+	if cliCfg.BasicAuth != "" {
+		parts := strings.SplitN(cliCfg.BasicAuth, ":", 2)
+		password := ""
+		if len(parts) > 1 {
+			password = parts[1]
+		}
+		httpOpts = append(httpOpts, protocol.WithBasicAuth(parts[0], password))
+	}
+
+	// Custom headers
+	if len(cliCfg.Headers) > 0 {
+		headers := make(map[string]string)
+		for _, h := range cliCfg.Headers {
+			parts := strings.SplitN(h, ":", 2)
+			if len(parts) == 2 {
+				headers[strings.TrimSpace(parts[0])] = strings.TrimSpace(parts[1])
+			}
+		}
+		httpOpts = append(httpOpts, protocol.WithHeaders(headers))
+	}
+
+	// Create HTTP client
+	httpClient := protocol.NewHTTPClient(httpOpts...)
+
+	// Get file metadata
+	meta, err := httpClient.Head(context.Background(), url)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error: Failed to get file info: %v\n", err)
+		return ExitNetworkError
+	}
+
+	// Determine output path
+	outputPath := determineOutputPath(cliCfg, meta.Filename)
+
+	// Create TUI runner
+	tuiRunner := tui.NewRunner(url, meta.Filename, meta.ContentLength, cliCfg.Connections)
+
+	// Create downloader
+	downloaderConfig := engine.DefaultConfig()
+	downloaderConfig.Connections = cliCfg.Connections
+
+	// Rate limiter
+	if cliCfg.LimitRate != "" {
+		bytesPerSec, err := config.ParseBandwidth(cliCfg.LimitRate)
+		if err == nil {
+			downloaderConfig.RateLimiter = engine.NewRateLimiter(bytesPerSec)
+		}
+	}
+
+	downloader := engine.NewDownloader(downloaderConfig, httpClient)
+
+	// Set progress callback for TUI
+	downloader.SetProgressCallback(func(p engine.Progress) {
+		tuiRunner.UpdateProgress(p, p.ChunkStatus)
+	})
+
+	// Run download in background
+	var downloadErr error
+	var downloadDone = make(chan struct{})
+
+	go func() {
+		defer close(downloadDone)
+		downloadErr = downloader.Download(tuiRunner.Context(), url, outputPath)
+	}()
+
+	// Start TUI (blocks until user quits or download completes)
+	go func() {
+		<-downloadDone
+		if downloadErr != nil {
+			tuiRunner.SetError(downloadErr)
+		} else {
+			progress := downloader.GetProgress()
+			tuiRunner.SetComplete(meta.Filename, meta.ContentLength, progress.ElapsedTime, progress.Speed)
+
+			// Verify checksum if specified
+			if cliCfg.Checksum != "" {
+				tuiRunner.SetVerifying()
+				expectedChecksum, _ := engine.ParseChecksumAuto(cliCfg.Checksum)
+				if expectedChecksum != nil {
+					valid, _ := engine.VerifyChecksum(outputPath, expectedChecksum)
+					tuiRunner.SetVerified(valid)
+				}
+			}
+		}
+
+		// Wait a bit to show final status
+		time.Sleep(2 * time.Second)
+		tuiRunner.Stop()
+	}()
+
+	// Run the TUI
+	if err := tuiRunner.Start(); err != nil {
+		fmt.Fprintf(os.Stderr, "TUI error: %v\n", err)
+		return ExitGeneralError
+	}
+
+	if downloadErr != nil {
+		return ExitNetworkError
+	}
+
+	return ExitSuccess
 }

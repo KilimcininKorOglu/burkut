@@ -23,12 +23,15 @@ type Progress struct {
 	ChunkStatus  []ChunkProgress
 	StartTime    time.Time
 	ElapsedTime  time.Duration
-	RemainingETA time.Duration
+	ETA          time.Duration // Estimated time remaining
+	RemainingETA time.Duration // Deprecated: use ETA
 }
 
 // ChunkProgress represents progress of a single chunk
 type ChunkProgress struct {
 	ID         int
+	Start      int64
+	End        int64
 	Downloaded int64
 	Total      int64
 	Speed      int64
@@ -385,6 +388,8 @@ func (d *Downloader) GetProgress() Progress {
 	for i, chunk := range d.state.Chunks {
 		chunkProgress[i] = ChunkProgress{
 			ID:         chunk.ID,
+			Start:      chunk.Start,
+			End:        chunk.End,
 			Downloaded: chunk.Downloaded,
 			Total:      chunk.Size(),
 			Status:     chunk.Status,
@@ -399,7 +404,8 @@ func (d *Downloader) GetProgress() Progress {
 		ChunkStatus:  chunkProgress,
 		StartTime:    d.startTime,
 		ElapsedTime:  elapsed,
-		RemainingETA: eta,
+		ETA:          eta,
+		RemainingETA: eta, // Deprecated
 	}
 }
 
