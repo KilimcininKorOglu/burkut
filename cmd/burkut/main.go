@@ -1655,7 +1655,21 @@ func runFTPDownload(cliCfg CLIConfig, rawURL string) int {
 
 	// Enable TLS for ftps:// scheme
 	if strings.ToLower(parsedURL.Scheme) == "ftps" {
-		ftpOpts = append(ftpOpts, protocol.WithFTPS(true))
+		// Check if using implicit FTPS port (990)
+		port := parsedURL.Port()
+		if port == "990" || port == "" {
+			// Default FTPS port or explicit 990 = implicit TLS
+			ftpOpts = append(ftpOpts, protocol.WithFTPSImplicit(true))
+			if cliCfg.Verbose {
+				fmt.Fprintln(os.Stderr, "Using implicit FTPS (port 990)")
+			}
+		} else {
+			// Explicit FTPS (AUTH TLS) on non-standard port
+			ftpOpts = append(ftpOpts, protocol.WithFTPS(true))
+			if cliCfg.Verbose {
+				fmt.Fprintln(os.Stderr, "Using explicit FTPS (AUTH TLS)")
+			}
+		}
 		if cliCfg.NoCheckCert {
 			ftpOpts = append(ftpOpts, protocol.WithFTPSkipTLSVerify(true))
 		}
