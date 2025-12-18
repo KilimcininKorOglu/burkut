@@ -12,15 +12,16 @@ import (
 	"os/signal"
 	"path/filepath"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 
 	"github.com/kilimcininkoroglu/burkut/internal/config"
 	"github.com/kilimcininkoroglu/burkut/internal/crawler"
 	"github.com/kilimcininkoroglu/burkut/internal/download"
-	"github.com/kilimcininkoroglu/burkut/internal/metalink"
 	"github.com/kilimcininkoroglu/burkut/internal/engine"
 	"github.com/kilimcininkoroglu/burkut/internal/hooks"
+	"github.com/kilimcininkoroglu/burkut/internal/metalink"
 	"github.com/kilimcininkoroglu/burkut/internal/protocol"
 	"github.com/kilimcininkoroglu/burkut/internal/tui"
 	"github.com/kilimcininkoroglu/burkut/internal/ui"
@@ -106,6 +107,7 @@ type CLIConfig struct {
 	PageRequisites  bool   // Download page requisites (CSS, JS, images)
 	ConvertLinks    bool   // Convert links to local paths
 	MirrorMode      bool   // Mirror mode (-m = -r -N -l inf)
+	SpiderMode      bool   // Spider mode (list URLs only, no download)
 }
 
 func main() {
@@ -160,7 +162,9 @@ func main() {
 
 	// Run download
 	var exitCode int
-	if cliConfig.Recursive {
+	if cliConfig.SpiderMode {
+		exitCode = runSpiderMode(cliConfig, urlArg)
+	} else if cliConfig.Recursive {
 		exitCode = runRecursiveDownload(cliConfig, urlArg)
 	} else if isFTPURL(urlArg) {
 		exitCode = runFTPDownload(cliConfig, urlArg)
@@ -257,6 +261,7 @@ func parseFlags() CLIConfig {
 	flag.BoolVar(&cfg.ConvertLinks, "convert-links", false, "Convert links to local paths")
 	flag.BoolVar(&cfg.MirrorMode, "m", false, "Mirror mode (-r -N -l inf --page-requisites)")
 	flag.BoolVar(&cfg.MirrorMode, "mirror", false, "Mirror mode")
+	flag.BoolVar(&cfg.SpiderMode, "spider", false, "Spider mode (list URLs only, no download)")
 
 	flag.Usage = printUsage
 	flag.Parse()
@@ -787,6 +792,7 @@ Recursive Download (Spider Mode):
       --reject-ext EXTS  Reject extensions (comma-separated)
   -p, --page-requisites  Download page requisites (CSS, JS, images)
   -k, --convert-links    Convert links to local paths
+      --spider           Spider mode: list URLs only (no download)
   -w, --wait TIME        Wait time between requests (e.g., '1s')
       --random-wait      Add random 0-500ms to wait time
   -e, --robots-off       Ignore robots.txt
@@ -822,6 +828,10 @@ Examples:
 Batch Download:
   burkut -i urls.txt                   Download all URLs from file
   burkut -i urls.txt -P /downloads     Download to specific directory
+
+Spider Mode (list URLs without downloading):
+  burkut --spider https://example.com/docs/           List all URLs
+  burkut --spider -l 3 https://example.com/ > urls.txt  Save to file
 
 URL File Format (one URL per line):
   https://example.com/file1.zip
@@ -1246,13 +1256,14 @@ func runRecursiveDownload(cliCfg CLIConfig, startURL string) int {
 	// Progress callback
 	if !cliCfg.Quiet {
 		lastReport := time.Time{}
-		c.SetProgressCallback(func(stats *crawler.Stats) {
+		c.SetProgressCallback(func(current, total int, url string, status crawler.Status) {
 			// Rate limit output
 			if time.Since(lastReport) < 500*time.Millisecond {
 				return
 			}
 			lastReport = time.Now()
 
+			stats := c.GetStats()
 			elapsed := time.Since(stats.StartTime).Round(time.Second)
 			fmt.Fprintf(os.Stderr, "\r[%s] Downloaded: %d | Failed: %d | Skipped: %d | Depth: %d | %s",
 				elapsed,
@@ -1260,7 +1271,7 @@ func runRecursiveDownload(cliCfg CLIConfig, startURL string) int {
 				stats.FailedURLs,
 				stats.SkippedURLs,
 				stats.CurrentDepth,
-				truncateURL(stats.CurrentURL, 50),
+				truncateURL(url, 50),
 			)
 		})
 	}
@@ -1304,6 +1315,118 @@ func runRecursiveDownload(cliCfg CLIConfig, startURL string) int {
 
 	if stats.FailedURLs > 0 {
 		return ExitGeneralError
+	}
+
+	return ExitSuccess
+}
+
+// runSpiderMode runs spider mode - lists URLs without downloading
+func runSpiderMode(cliCfg CLIConfig, startURL string) int {
+	// Set up context with signal handling
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	// Handle Ctrl+C
+	sigCh := make(chan os.Signal, 1)
+	signal.Notify(sigCh, os.Interrupt)
+	go func() {
+		<-sigCh
+		fmt.Fprintln(os.Stderr, "\nInterrupted, stopping...")
+		cancel()
+	}()
+
+	// Create crawler config (similar to recursive mode)
+	crawlConfig := &crawler.Config{
+		MaxDepth:      cliCfg.MaxDepth,
+		Workers:       cliCfg.Connections,
+		OutputDir:     "", // No output needed
+		RespectRobots: !cliCfg.RobotsOff,
+		DownloadFiles: false, // Spider mode - don't download
+	}
+
+	// Set defaults
+	if crawlConfig.MaxDepth <= 0 {
+		crawlConfig.MaxDepth = 5
+	}
+	if crawlConfig.Workers <= 0 {
+		crawlConfig.Workers = 2
+	}
+
+	crawlConfig.UserAgent = "Burkut/1.0 Spider (URL checker; +https://github.com/kilimcininkoroglu/burkut)"
+
+	// Parse wait time
+	if cliCfg.WaitTime != "" {
+		if waitDuration, err := time.ParseDuration(cliCfg.WaitTime); err == nil {
+			crawlConfig.WaitTime = waitDuration
+		}
+	}
+
+	// Create filter
+	filter := &crawler.Filter{
+		SameDomain:     !cliCfg.SpanHosts,
+		FollowExternal: cliCfg.SpanHosts,
+		PageRequisites: cliCfg.PageRequisites,
+	}
+
+	// Set patterns
+	if cliCfg.AcceptPatterns != "" {
+		filter.AcceptPatterns = strings.Split(cliCfg.AcceptPatterns, ",")
+	}
+	if cliCfg.RejectPatterns != "" {
+		filter.RejectPatterns = strings.Split(cliCfg.RejectPatterns, ",")
+	}
+	if cliCfg.AcceptExt != "" {
+		filter.AcceptExtensions = strings.Split(cliCfg.AcceptExt, ",")
+	}
+	if cliCfg.RejectExt != "" {
+		filter.RejectExtensions = strings.Split(cliCfg.RejectExt, ",")
+	}
+
+	crawlConfig.Filter = filter
+
+	// Create crawler
+	c := crawler.NewCrawler(crawlConfig)
+
+	// Track found URLs
+	foundURLs := make(map[string]bool)
+	var urlMutex sync.Mutex
+	var urlCount int
+
+	// URL found callback - print each URL as found
+	c.SetProgressCallback(func(current, total int, url string, status crawler.Status) {
+		if status == crawler.StatusCompleted || status == crawler.StatusDownloading {
+			urlMutex.Lock()
+			if !foundURLs[url] {
+				foundURLs[url] = true
+				urlCount++
+				// Print URL to stdout (can be piped)
+				fmt.Println(url)
+			}
+			urlMutex.Unlock()
+		}
+	})
+
+	// Print header to stderr (so stdout is clean for piping)
+	if !cliCfg.Quiet {
+		fmt.Fprintf(os.Stderr, "Spider mode: crawling %s (max depth: %d)\n", startURL, cliCfg.MaxDepth)
+		fmt.Fprintln(os.Stderr, "URLs found:")
+		fmt.Fprintln(os.Stderr, "---")
+	}
+
+	// Start crawling
+	err := c.Crawl(ctx, startURL)
+	if err != nil && err != context.Canceled {
+		fmt.Fprintf(os.Stderr, "\nSpider error: %v\n", err)
+		return ExitNetworkError
+	}
+
+	// Print summary to stderr
+	stats := c.GetStats()
+	if !cliCfg.Quiet {
+		fmt.Fprintln(os.Stderr, "---")
+		fmt.Fprintf(os.Stderr, "Total URLs found: %d\n", urlCount)
+		fmt.Fprintf(os.Stderr, "Pages crawled: %d\n", stats.DownloadedURLs)
+		fmt.Fprintf(os.Stderr, "Failed: %d\n", stats.FailedURLs)
 	}
 
 	return ExitSuccess

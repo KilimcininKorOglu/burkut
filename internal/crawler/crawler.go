@@ -37,6 +37,9 @@ type Config struct {
 	// Convert links to local paths
 	ConvertLinks bool
 
+	// Download files (false = spider mode, just crawl)
+	DownloadFiles bool
+
 	// Number of parallel workers
 	Workers int
 
@@ -63,6 +66,7 @@ func DefaultConfig() *Config {
 		UserAgent:     "Burkut/1.0 (Website Mirror)",
 		OutputDir:     ".",
 		ConvertLinks:  false,
+		DownloadFiles: true, // Default: download files (not spider mode)
 		Workers:       2,
 		Timeout:       30 * time.Second,
 		MaxFileSize:   0,
@@ -84,6 +88,12 @@ type Stats struct {
 }
 
 // Crawler handles recursive website downloading
+// Status represents the status of a crawl operation (alias for external use)
+type Status = CrawlStatus
+
+// StatusDownloading is an alias for StatusInProgress
+const StatusDownloading = StatusInProgress
+
 type Crawler struct {
 	config  *Config
 	queue   *URLQueue
@@ -91,8 +101,8 @@ type Crawler struct {
 	stats   *Stats
 	baseURL *url.URL
 
-	// Progress callback
-	progressFn func(*Stats)
+	// Progress callback - receives current count, total count, URL and status
+	progressFn func(int, int, string, Status)
 
 	// Error callback
 	errorFn func(string, error)
@@ -128,7 +138,8 @@ func NewCrawler(config *Config) *Crawler {
 }
 
 // SetProgressCallback sets the progress callback function
-func (c *Crawler) SetProgressCallback(fn func(*Stats)) {
+// Receives: current count, total count, URL, and status
+func (c *Crawler) SetProgressCallback(fn func(int, int, string, Status)) {
 	c.progressFn = fn
 }
 
@@ -279,11 +290,13 @@ func (c *Crawler) processItem(ctx context.Context, item *CrawlItem) {
 	c.stats.mu.Lock()
 	c.stats.DownloadedURLs++
 	c.stats.TotalURLs++
+	downloaded := c.stats.DownloadedURLs
+	total := c.stats.TotalURLs
 	c.stats.mu.Unlock()
 
 	// Report progress
 	if c.progressFn != nil {
-		c.progressFn(c.GetStats())
+		c.progressFn(downloaded, total, item.URL.String(), StatusCompleted)
 	}
 
 	// Extract and queue links if not at max depth
@@ -292,7 +305,7 @@ func (c *Crawler) processItem(ctx context.Context, item *CrawlItem) {
 	}
 }
 
-// download downloads a URL and saves it locally
+// download downloads a URL and saves it locally (or just fetches in spider mode)
 func (c *Crawler) download(ctx context.Context, item *CrawlItem) (string, string, []byte, error) {
 	// Create request
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, item.URL.String(), nil)
@@ -335,26 +348,31 @@ func (c *Crawler) download(ctx context.Context, item *CrawlItem) (string, string
 		return "", "", nil, err
 	}
 
-	// Determine local path
-	localPath := c.urlToLocalPath(item.URL)
-
-	// Create directory
-	dir := filepath.Dir(localPath)
-	if err := os.MkdirAll(dir, 0755); err != nil {
-		return "", "", nil, err
-	}
-
-	// Write file
-	if err := os.WriteFile(localPath, body, 0644); err != nil {
-		return "", "", nil, err
-	}
-
-	// Update stats
-	c.stats.mu.Lock()
-	c.stats.TotalBytes += int64(len(body))
-	c.stats.mu.Unlock()
-
 	contentType := resp.Header.Get("Content-Type")
+	var localPath string
+
+	// Save file only if not in spider mode
+	if c.config.DownloadFiles {
+		// Determine local path
+		localPath = c.urlToLocalPath(item.URL)
+
+		// Create directory
+		dir := filepath.Dir(localPath)
+		if err := os.MkdirAll(dir, 0755); err != nil {
+			return "", "", nil, err
+		}
+
+		// Write file
+		if err := os.WriteFile(localPath, body, 0644); err != nil {
+			return "", "", nil, err
+		}
+
+		// Update stats
+		c.stats.mu.Lock()
+		c.stats.TotalBytes += int64(len(body))
+		c.stats.mu.Unlock()
+	}
+
 	return localPath, contentType, body, nil
 }
 
