@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"strings"
 	"testing"
 	"time"
 )
@@ -441,6 +442,105 @@ func TestExtractFilename(t *testing.T) {
 
 			if meta.Filename != tt.expected {
 				t.Errorf("Filename = %q, want %q", meta.Filename, tt.expected)
+			}
+		})
+	}
+}
+
+func TestParseContentDisposition(t *testing.T) {
+	tests := []struct {
+		name     string
+		input    string
+		expected string
+	}{
+		{
+			name:     "basic attachment",
+			input:    `attachment; filename="file.zip"`,
+			expected: "file.zip",
+		},
+		{
+			name:     "without quotes",
+			input:    "attachment; filename=file.zip",
+			expected: "file.zip",
+		},
+		{
+			name:     "inline disposition",
+			input:    `inline; filename="document.pdf"`,
+			expected: "document.pdf",
+		},
+		{
+			name:     "UTF-8 encoded",
+			input:    "attachment; filename*=UTF-8''%E4%B8%AD%E6%96%87.txt",
+			expected: "中文.txt",
+		},
+		{
+			name:     "UTF-8 with language tag",
+			input:    "attachment; filename*=UTF-8'en'%E4%B8%AD%E6%96%87.txt",
+			expected: "中文.txt",
+		},
+		{
+			name:     "both filename and filename*",
+			input:    `attachment; filename="fallback.txt"; filename*=UTF-8''%E4%B8%AD%E6%96%87.txt`,
+			expected: "中文.txt", // filename* takes priority
+		},
+		{
+			name:     "escaped quotes",
+			input:    `attachment; filename="file\"with\"quotes.txt"`,
+			expected: "file_with_quotes.txt", // quotes are sanitized
+		},
+		{
+			name:     "path traversal attempt",
+			input:    `attachment; filename="../../../etc/passwd"`,
+			expected: "_.._.._etc_passwd", // dots between path separators preserved
+		},
+		{
+			name:     "null byte attack",
+			input:    "attachment; filename=\"file.txt\x00.exe\"",
+			expected: "file.txt.exe",
+		},
+		{
+			name:     "empty",
+			input:    "",
+			expected: "",
+		},
+		{
+			name:     "no filename",
+			input:    "attachment",
+			expected: "",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := parseContentDisposition(tt.input)
+			if result != tt.expected {
+				t.Errorf("parseContentDisposition(%q) = %q, want %q", tt.input, result, tt.expected)
+			}
+		})
+	}
+}
+
+func TestSanitizeFilename(t *testing.T) {
+	tests := []struct {
+		name     string
+		input    string
+		expected string
+	}{
+		{"normal", "file.txt", "file.txt"},
+		{"with spaces", "my file.txt", "my file.txt"},
+		{"path separator slash", "path/to/file.txt", "path_to_file.txt"},
+		{"path separator backslash", "path\\to\\file.txt", "path_to_file.txt"},
+		{"leading dots", "...file.txt", "file.txt"},
+		{"trailing dots", "file.txt...", "file.txt"},
+		{"special chars", "file<>:\"|?*.txt", "file_______.txt"},
+		{"very long name", strings.Repeat("a", 300) + ".txt", strings.Repeat("a", 251) + ".txt"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := sanitizeFilename(tt.input)
+			if result != tt.expected {
+				t.Errorf("sanitizeFilename(%q) = %q, want %q", tt.input, result, tt.expected)
 			}
 		})
 	}

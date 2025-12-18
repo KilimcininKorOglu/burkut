@@ -12,6 +12,7 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
@@ -523,36 +524,98 @@ func (c *HTTPClient) extractFilename(rawURL string, resp *http.Response) string 
 }
 
 // parseContentDisposition extracts filename from Content-Disposition header
+// Supports RFC 2616 (Basic), RFC 5987 (UTF-8/encoded), and RFC 6266 standards
 func parseContentDisposition(cd string) string {
 	// Handle: attachment; filename="example.zip"
 	// Handle: attachment; filename=example.zip
 	// Handle: attachment; filename*=UTF-8''example.zip
+	// Handle: attachment; filename*=utf-8'en'%E4%B8%AD%E6%96%87.zip
+	// Handle: inline; filename="file.pdf"
+
+	var filename string
+	var filenameEncoded string
 
 	parts := strings.Split(cd, ";")
 	for _, part := range parts {
 		part = strings.TrimSpace(part)
+		lowerPart := strings.ToLower(part)
 
-		// Check for filename*= (RFC 5987)
-		if strings.HasPrefix(strings.ToLower(part), "filename*=") {
+		// Check for filename*= (RFC 5987) - takes priority
+		if strings.HasPrefix(lowerPart, "filename*=") {
 			value := part[10:]
-			// Handle UTF-8''filename format
+			// Handle encoding''filename format (e.g., UTF-8''name or UTF-8'en'name)
 			if idx := strings.Index(value, "''"); idx >= 0 {
 				value = value[idx+2:]
+			} else if idx := strings.Index(value, "'"); idx >= 0 {
+				// Handle single quote format (language tag)
+				if idx2 := strings.Index(value[idx+1:], "'"); idx2 >= 0 {
+					value = value[idx+1+idx2+1:]
+				}
 			}
+			// URL decode
 			if decoded, err := url.QueryUnescape(value); err == nil {
-				return decoded
+				filenameEncoded = decoded
+			} else {
+				filenameEncoded = value
 			}
-			return value
 		}
 
 		// Check for filename=
-		if strings.HasPrefix(strings.ToLower(part), "filename=") {
+		if strings.HasPrefix(lowerPart, "filename=") && !strings.HasPrefix(lowerPart, "filename*=") {
 			value := part[9:]
 			// Remove surrounding quotes
 			value = strings.Trim(value, `"'`)
-			return value
+			// Handle escaped quotes within filename
+			value = strings.ReplaceAll(value, `\"`, `"`)
+			value = strings.ReplaceAll(value, `\\`, `\`)
+			filename = value
 		}
 	}
 
+	// RFC 5987 filename* takes priority over filename
+	if filenameEncoded != "" {
+		return sanitizeFilename(filenameEncoded)
+	}
+	if filename != "" {
+		return sanitizeFilename(filename)
+	}
+
 	return ""
+}
+
+// sanitizeFilename removes potentially dangerous characters from filename
+func sanitizeFilename(name string) string {
+	// Remove path separators to prevent directory traversal
+	name = strings.ReplaceAll(name, "/", "_")
+	name = strings.ReplaceAll(name, "\\", "_")
+	
+	// Remove null bytes
+	name = strings.ReplaceAll(name, "\x00", "")
+	
+	// Remove leading/trailing whitespace and dots
+	name = strings.TrimSpace(name)
+	name = strings.Trim(name, ".")
+	
+	// Replace other problematic characters
+	replacer := strings.NewReplacer(
+		"<", "_",
+		">", "_",
+		":", "_",
+		"\"", "_",
+		"|", "_",
+		"?", "_",
+		"*", "_",
+	)
+	name = replacer.Replace(name)
+	
+	// Limit length
+	if len(name) > 255 {
+		ext := filepath.Ext(name)
+		if len(ext) > 50 {
+			ext = ext[:50]
+		}
+		name = name[:255-len(ext)] + ext
+	}
+	
+	return name
 }
