@@ -56,15 +56,15 @@
 
 Download the latest release for your platform from [GitHub Releases](https://github.com/kilimcininkoroglu/burkut/releases):
 
-| Platform | File |
-|----------|------|
-| Windows 64-bit | `burkut-windows-amd64.exe` |
-| Windows ARM | `burkut-windows-arm64.exe` |
-| Linux 64-bit | `burkut-linux-amd64` |
-| Linux ARM64 | `burkut-linux-arm64` |
-| macOS Intel | `burkut-darwin-amd64` |
-| macOS Apple Silicon | `burkut-darwin-arm64` |
-| FreeBSD | `burkut-freebsd-amd64` |
+| Platform            | File                       |
+|---------------------|----------------------------|
+| Windows 64-bit      | `burkut-windows-amd64.exe` |
+| Windows ARM         | `burkut-windows-arm64.exe` |
+| Linux 64-bit        | `burkut-linux-amd64`       |
+| Linux ARM64         | `burkut-linux-arm64`       |
+| macOS Intel         | `burkut-darwin-amd64`      |
+| macOS Apple Silicon | `burkut-darwin-arm64`      |
+| FreeBSD             | `burkut-freebsd-amd64`     |
 
 ```bash
 # Linux/macOS: Make executable and move to PATH
@@ -267,17 +267,17 @@ cp completions/burkut.fish ~/.config/fish/completions/
 
 ## Exit Codes
 
-| Code | Meaning |
-|------|---------|
-| 0 | Success |
-| 1 | General error |
-| 2 | Parse/config error |
-| 3 | Network error |
-| 4 | Authentication error |
-| 5 | TLS/SSL error |
-| 6 | Checksum mismatch |
-| 7 | Timeout |
-| 8 | Interrupted (Ctrl+C) |
+| Code | Meaning              |
+|------|----------------------|
+| 0    | Success              |
+| 1    | General error        |
+| 2    | Parse/config error   |
+| 3    | Network error        |
+| 4    | Authentication error |
+| 5    | TLS/SSL error        |
+| 6    | Checksum mismatch    |
+| 7    | Timeout              |
+| 8    | Interrupted (Ctrl+C) |
 
 Use in scripts:
 ```bash
