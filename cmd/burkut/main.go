@@ -6,6 +6,8 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"io"
+	"net/url"
 	"os"
 	"os/signal"
 	"path/filepath"
@@ -160,6 +162,8 @@ func main() {
 	var exitCode int
 	if cliConfig.Recursive {
 		exitCode = runRecursiveDownload(cliConfig, urlArg)
+	} else if isFTPURL(urlArg) {
+		exitCode = runFTPDownload(cliConfig, urlArg)
 	} else if cliConfig.UseTUI {
 		exitCode = runDownloadTUI(cliConfig, urlArg)
 	} else {
@@ -1428,4 +1432,198 @@ func min(a, b int) int {
 		return a
 	}
 	return b
+}
+
+// isFTPURL checks if URL is FTP or FTPS
+func isFTPURL(rawURL string) bool {
+	u, err := url.Parse(rawURL)
+	if err != nil {
+		return false
+	}
+	scheme := strings.ToLower(u.Scheme)
+	return scheme == "ftp" || scheme == "ftps"
+}
+
+// runFTPDownload handles FTP/FTPS downloads
+func runFTPDownload(cliCfg CLIConfig, rawURL string) int {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	// Setup signal handling
+	sigChan := make(chan os.Signal, 1)
+	signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
+
+	go func() {
+		<-sigChan
+		fmt.Fprintln(os.Stderr, "\nInterrupted...")
+		cancel()
+	}()
+
+	// Parse URL to check scheme
+	parsedURL, err := url.Parse(rawURL)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error: Invalid URL: %v\n", err)
+		return ExitParseError
+	}
+
+	// Build FTP client options
+	ftpOpts := []protocol.FTPClientOption{
+		protocol.WithFTPTimeout(cliCfg.Timeout),
+	}
+
+	// Enable TLS for ftps:// scheme
+	if strings.ToLower(parsedURL.Scheme) == "ftps" {
+		ftpOpts = append(ftpOpts, protocol.WithFTPS(true))
+		if cliCfg.NoCheckCert {
+			ftpOpts = append(ftpOpts, protocol.WithFTPSkipTLSVerify(true))
+		}
+	}
+
+	// Handle authentication from URL or CLI
+	if parsedURL.User != nil {
+		username := parsedURL.User.Username()
+		password, _ := parsedURL.User.Password()
+		ftpOpts = append(ftpOpts, protocol.WithFTPAuth(username, password))
+	} else if cliCfg.BasicAuth != "" {
+		parts := strings.SplitN(cliCfg.BasicAuth, ":", 2)
+		if len(parts) == 2 {
+			ftpOpts = append(ftpOpts, protocol.WithFTPAuth(parts[0], parts[1]))
+		}
+	}
+
+	// Create FTP client
+	ftpClient := protocol.NewFTPClient(ftpOpts...)
+
+	// Get file info
+	if cliCfg.Verbose {
+		fmt.Fprintf(os.Stderr, "Connecting to %s\n", parsedURL.Host)
+	}
+
+	meta, err := ftpClient.Head(ctx, rawURL)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error: Failed to get file info: %v\n", err)
+		return ExitNetworkError
+	}
+
+	// Determine output path
+	outputPath := determineOutputPath(cliCfg, meta.Filename)
+
+	if !cliCfg.Quiet {
+		fmt.Fprintf(os.Stderr, "File: %s\n", meta.Filename)
+		fmt.Fprintf(os.Stderr, "Size: %s\n", formatBytes(meta.ContentLength))
+		if !meta.LastModified.IsZero() {
+			fmt.Fprintf(os.Stderr, "Modified: %s\n", meta.LastModified.Format(time.RFC1123))
+		}
+		fmt.Fprintf(os.Stderr, "Saving to: %s\n", outputPath)
+		fmt.Fprintln(os.Stderr)
+	}
+
+	// Download file
+	reader, _, err := ftpClient.Get(ctx, rawURL)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error: Failed to download: %v\n", err)
+		return ExitNetworkError
+	}
+	defer reader.Close()
+
+	// Create output file
+	outFile, err := os.Create(outputPath)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error: Failed to create file: %v\n", err)
+		return ExitGeneralError
+	}
+	defer outFile.Close()
+
+	// Copy with progress
+	startTime := time.Now()
+	var downloaded int64
+	showProgress := cliCfg.Progress != "none" && !cliCfg.Quiet
+	lastProgressTime := time.Time{}
+
+	buf := make([]byte, 32*1024)
+	for {
+		select {
+		case <-ctx.Done():
+			return ExitInterrupted
+		default:
+		}
+
+		n, err := reader.Read(buf)
+		if n > 0 {
+			_, writeErr := outFile.Write(buf[:n])
+			if writeErr != nil {
+				fmt.Fprintf(os.Stderr, "\nError writing file: %v\n", writeErr)
+				return ExitGeneralError
+			}
+			downloaded += int64(n)
+
+			// Show progress every 100ms
+			if showProgress && time.Since(lastProgressTime) > 100*time.Millisecond {
+				lastProgressTime = time.Now()
+				elapsed := time.Since(startTime)
+				speed := int64(0)
+				if elapsed.Seconds() > 0 {
+					speed = int64(float64(downloaded) / elapsed.Seconds())
+				}
+				percent := float64(downloaded) / float64(meta.ContentLength) * 100
+				fmt.Fprintf(os.Stderr, "\r%s / %s (%.1f%%) %s/s    ",
+					formatBytes(downloaded),
+					formatBytes(meta.ContentLength),
+					percent,
+					formatBytes(speed))
+			}
+		}
+
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "\nError reading: %v\n", err)
+			return ExitNetworkError
+		}
+	}
+
+	if showProgress {
+		fmt.Fprintln(os.Stderr) // New line after progress
+	}
+
+	// Print summary
+	if !cliCfg.Quiet {
+		elapsed := time.Since(startTime)
+		speed := int64(float64(downloaded) / elapsed.Seconds())
+		fmt.Fprintf(os.Stderr, "\nDownloaded %s in %s (%s/s)\n",
+			formatBytes(downloaded),
+			elapsed.Round(time.Millisecond),
+			formatBytes(speed))
+	}
+
+	// Verify checksum if specified
+	if cliCfg.Checksum != "" {
+		expectedChecksum, err := engine.ParseChecksumAuto(cliCfg.Checksum)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error: Invalid checksum: %v\n", err)
+			return ExitChecksumError
+		}
+
+		if !cliCfg.Quiet {
+			fmt.Fprintf(os.Stderr, "Verifying checksum...")
+		}
+
+		valid, err := engine.VerifyChecksum(outputPath, expectedChecksum)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, " error: %v\n", err)
+			return ExitChecksumError
+		}
+
+		if !valid {
+			fmt.Fprintf(os.Stderr, " FAILED!\n")
+			return ExitChecksumError
+		}
+
+		if !cliCfg.Quiet {
+			fmt.Fprintf(os.Stderr, " OK\n")
+		}
+	}
+
+	return ExitSuccess
 }
