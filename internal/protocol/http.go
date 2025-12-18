@@ -25,13 +25,16 @@ type Metadata struct {
 	ContentType   string
 	LastModified  time.Time
 	ETag          string
+	Protocol      string // HTTP protocol version (e.g., "HTTP/1.1", "HTTP/2.0")
 }
 
 // HTTPClient is an HTTP protocol adapter for downloading files
 type HTTPClient struct {
-	client    *http.Client
-	userAgent string
-	headers   map[string]string
+	client     *http.Client
+	userAgent  string
+	headers    map[string]string
+	forceHTTP1 bool // Force HTTP/1.1 instead of HTTP/2
+	forceHTTP2 bool // Force HTTP/2 (fail if not supported)
 }
 
 // HTTPClientOption is a function that configures HTTPClient
@@ -190,6 +193,32 @@ func WithTLSConfig(config *tls.Config) HTTPClientOption {
 	}
 }
 
+// WithForceHTTP1 forces HTTP/1.1 instead of HTTP/2
+// Useful for servers that have issues with HTTP/2
+func WithForceHTTP1(force bool) HTTPClientOption {
+	return func(c *HTTPClient) {
+		c.forceHTTP1 = force
+		if force {
+			transport := c.getTransport()
+			// Disable HTTP/2 by setting TLSNextProto to empty map
+			transport.TLSNextProto = make(map[string]func(string, *tls.Conn) http.RoundTripper)
+			// Also disable ForceAttemptHTTP2
+			transport.ForceAttemptHTTP2 = false
+		}
+	}
+}
+
+// WithForceHTTP2 forces HTTP/2 and fails if server doesn't support it
+func WithForceHTTP2(force bool) HTTPClientOption {
+	return func(c *HTTPClient) {
+		c.forceHTTP2 = force
+		if force {
+			transport := c.getTransport()
+			transport.ForceAttemptHTTP2 = true
+		}
+	}
+}
+
 // getTransport returns the underlying transport, creating one if needed
 func (c *HTTPClient) getTransport() *http.Transport {
 	if t, ok := c.client.Transport.(*http.Transport); ok {
@@ -335,6 +364,7 @@ func (c *HTTPClient) parseMetadata(rawURL string, resp *http.Response) (*Metadat
 		ContentType:  resp.Header.Get("Content-Type"),
 		ETag:         resp.Header.Get("ETag"),
 		AcceptRanges: strings.ToLower(resp.Header.Get("Accept-Ranges")) == "bytes",
+		Protocol:     resp.Proto, // e.g., "HTTP/1.1", "HTTP/2.0"
 	}
 
 	// Parse Content-Length
@@ -354,6 +384,11 @@ func (c *HTTPClient) parseMetadata(rawURL string, resp *http.Response) (*Metadat
 
 	// Extract filename from Content-Disposition or URL
 	meta.Filename = c.extractFilename(rawURL, resp)
+
+	// Check if HTTP/2 was forced but not used
+	if c.forceHTTP2 && !strings.HasPrefix(resp.Proto, "HTTP/2") {
+		return nil, fmt.Errorf("HTTP/2 was forced but server responded with %s", resp.Proto)
+	}
 
 	return meta, nil
 }

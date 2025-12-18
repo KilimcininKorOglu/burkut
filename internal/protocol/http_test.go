@@ -207,6 +207,88 @@ func TestHTTPClient_WithOptions(t *testing.T) {
 	}
 }
 
+func TestHTTPClient_ProtocolVersion(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Length", "100")
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+
+	client := NewHTTPClient()
+	ctx := context.Background()
+
+	meta, err := client.Head(ctx, server.URL+"/test.bin")
+	if err != nil {
+		t.Fatalf("Head() error = %v", err)
+	}
+
+	// httptest.NewServer uses HTTP/1.1
+	if meta.Protocol != "HTTP/1.1" {
+		t.Errorf("Protocol = %q, want %q", meta.Protocol, "HTTP/1.1")
+	}
+}
+
+func TestHTTPClient_ForceHTTP1(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Length", "100")
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+
+	client := NewHTTPClient(WithForceHTTP1(true))
+	ctx := context.Background()
+
+	meta, err := client.Head(ctx, server.URL+"/test.bin")
+	if err != nil {
+		t.Fatalf("Head() error = %v", err)
+	}
+
+	// With ForceHTTP1, should always use HTTP/1.1
+	if meta.Protocol != "HTTP/1.1" {
+		t.Errorf("Protocol = %q, want %q", meta.Protocol, "HTTP/1.1")
+	}
+
+	// Verify that forceHTTP1 flag is set
+	if !client.forceHTTP1 {
+		t.Error("forceHTTP1 flag should be true")
+	}
+}
+
+func TestHTTPClient_ForceHTTP2(t *testing.T) {
+	// Test that ForceHTTP2 option sets the flag
+	client := NewHTTPClient(WithForceHTTP2(true))
+
+	if !client.forceHTTP2 {
+		t.Error("forceHTTP2 flag should be true")
+	}
+
+	// Verify transport has ForceAttemptHTTP2 set
+	transport := client.getTransport()
+	if !transport.ForceAttemptHTTP2 {
+		t.Error("transport.ForceAttemptHTTP2 should be true")
+	}
+}
+
+func TestHTTPClient_ForceHTTP1_DisablesHTTP2(t *testing.T) {
+	client := NewHTTPClient(WithForceHTTP1(true))
+
+	transport := client.getTransport()
+
+	// Verify TLSNextProto is empty (disables HTTP/2)
+	if transport.TLSNextProto == nil {
+		t.Error("TLSNextProto should be initialized to empty map")
+	}
+
+	if len(transport.TLSNextProto) != 0 {
+		t.Error("TLSNextProto should be empty to disable HTTP/2")
+	}
+
+	// Verify ForceAttemptHTTP2 is false
+	if transport.ForceAttemptHTTP2 {
+		t.Error("ForceAttemptHTTP2 should be false when ForceHTTP1 is enabled")
+	}
+}
+
 func TestExtractFilename(t *testing.T) {
 	tests := []struct {
 		name        string

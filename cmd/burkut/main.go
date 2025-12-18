@@ -76,6 +76,8 @@ type CLIConfig struct {
 	WebhookURL    string // Webhook URL for notifications
 	MirrorURLs    string // Comma-separated mirror URLs
 	UseHTTP3      bool   // Use HTTP/3 (QUIC) protocol
+	ForceHTTP1    bool   // Force HTTP/1.1 (disable HTTP/2)
+	ForceHTTP2    bool   // Force HTTP/2 (fail if not supported)
 	// Authentication
 	UseNetrc    bool       // Use .netrc for authentication
 	Headers     headerList // Custom headers
@@ -172,6 +174,8 @@ func parseFlags() CLIConfig {
 	flag.StringVar(&cfg.WebhookURL, "webhook", "", "Webhook URL for download notifications")
 	flag.StringVar(&cfg.MirrorURLs, "mirrors", "", "Comma-separated mirror URLs for fallback")
 	flag.BoolVar(&cfg.UseHTTP3, "http3", false, "Use HTTP/3 (QUIC) protocol (experimental)")
+	flag.BoolVar(&cfg.ForceHTTP1, "http1", false, "Force HTTP/1.1 (disable HTTP/2)")
+	flag.BoolVar(&cfg.ForceHTTP2, "http2", false, "Force HTTP/2 (fail if server doesn't support)")
 
 	// Authentication options
 	flag.BoolVar(&cfg.UseNetrc, "netrc", false, "Use ~/.netrc for authentication")
@@ -277,6 +281,19 @@ func runDownload(cliCfg CLIConfig, url string) int {
 		}
 	}
 
+	// HTTP version control
+	if cliCfg.ForceHTTP1 {
+		httpOpts = append(httpOpts, protocol.WithForceHTTP1(true))
+		if cliCfg.Verbose {
+			fmt.Fprintf(os.Stderr, "Forcing HTTP/1.1\n")
+		}
+	} else if cliCfg.ForceHTTP2 {
+		httpOpts = append(httpOpts, protocol.WithForceHTTP2(true))
+		if cliCfg.Verbose {
+			fmt.Fprintf(os.Stderr, "Forcing HTTP/2\n")
+		}
+	}
+
 	// Handle authentication
 	authUser, authPass := "", ""
 
@@ -366,6 +383,7 @@ func runDownload(cliCfg CLIConfig, url string) int {
 		fmt.Fprintf(os.Stderr, "Filename: %s\n", meta.Filename)
 		fmt.Fprintf(os.Stderr, "Size: %s\n", ui.FormatBytes(meta.ContentLength))
 		fmt.Fprintf(os.Stderr, "Resume supported: %v\n", meta.AcceptRanges)
+		fmt.Fprintf(os.Stderr, "Protocol: %s\n", meta.Protocol)
 		fmt.Fprintf(os.Stderr, "Saving to: %s\n", outputPath)
 	}
 
@@ -623,13 +641,17 @@ Authentication Options:
       --netrc            Use ~/.netrc for authentication
   -H, --header HEADER    Add custom header (can be repeated)
 
+Protocol Options:
+      --http1            Force HTTP/1.1 (disable HTTP/2)
+      --http2            Force HTTP/2 (fail if server doesn't support)
+      --http3            Use HTTP/3 (QUIC) protocol (experimental)
+
 Batch & Automation:
   -i, --input-file FILE  Read URLs from file (batch download)
       --on-complete CMD  Run command after successful download
       --on-error CMD     Run command after failed download
       --webhook URL      Send webhook notification on complete/error
       --mirrors URLs     Comma-separated mirror URLs for fallback
-      --http3            Use HTTP/3 (QUIC) protocol (experimental)
 
 Interface:
       --tui              Use interactive TUI mode (fullscreen)
