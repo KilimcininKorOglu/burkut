@@ -4,20 +4,29 @@
 
 ## Features
 
-- **Multi-Protocol** - HTTP, HTTPS, FTP, SFTP downloads
+### Core
+- **Multi-Protocol** - HTTP, HTTPS, HTTP/2, FTP, FTPS, SFTP downloads
 - **HTTP/3 (QUIC)** - Experimental next-gen protocol support
 - **Smart Resume** - Automatically resume interrupted downloads
 - **Parallel Downloads** - Split files into chunks for faster downloads
 - **Progress Display** - Beautiful progress bars (bar, minimal, json modes)
+- **Interactive TUI** - Fullscreen mode with Bubbletea
+
+### Advanced
 - **Mirror Support** - Automatic failover to backup URLs
+- **Metalink Support** - Parse .metalink/.meta4 files with multiple mirrors
+- **Recursive Download** - Spider mode for website mirroring (`-r`, `-m`)
 - **Batch Downloads** - Download multiple files from URL lists
 - **Checksum Verification** - MD5, SHA1, SHA256, SHA512, BLAKE3
+- **Conditional Download** - Only download if newer (`-N`)
+- **Certificate Pinning** - SHA256 public key pinning (`--pinnedpubkey`)
+
+### Configuration
 - **Rate Limiting** - Control bandwidth usage
 - **Proxy Support** - HTTP and SOCKS5 proxies
 - **Authentication** - Basic auth, netrc, custom headers
 - **Hooks & Webhooks** - Run commands or send notifications
 - **YAML Config** - Profiles for different use cases
-- **Interactive TUI** - Fullscreen mode with Bubbletea
 
 ## Installation
 
@@ -100,12 +109,31 @@ burkut -u admin:secret https://example.com/protected/file.zip
 burkut --netrc https://example.com/file.zip
 burkut -H "Authorization: Bearer token123" https://api.example.com/download
 
-# FTP/SFTP
+# FTP/SFTP/FTPS
 burkut ftp://ftp.example.com/pub/file.zip
+burkut ftps://secure.example.com/file.zip
 burkut sftp://user@host.com/path/to/file.tar.gz
 
 # Interactive TUI mode
 burkut --tui https://example.com/large-file.iso
+
+# Metalink file (auto-selects best mirror)
+burkut example.metalink
+
+# Recursive download (website mirror)
+burkut -r https://example.com/docs/
+burkut -r -l 3 -A '*.pdf' https://example.com/papers/
+burkut -m https://example.com/  # full site mirror
+
+# Conditional download (only if newer)
+burkut -N https://example.com/file.zip
+
+# HTTP/2 control
+burkut --http1 https://example.com/file.zip   # force HTTP/1.1
+burkut --http2 https://example.com/file.zip   # force HTTP/2
+
+# Certificate pinning
+burkut --pinnedpubkey sha256//base64hash... https://secure.example.com/file
 ```
 
 ## Config
