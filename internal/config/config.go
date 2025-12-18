@@ -161,6 +161,7 @@ func ConfigPaths() []string {
 }
 
 // Load loads configuration from the first available config file
+// If no config file exists, creates a default one automatically
 func Load() (*Config, error) {
 	config := DefaultConfig()
 
@@ -174,8 +175,37 @@ func Load() (*Config, error) {
 		}
 	}
 
-	// No config file found, return defaults
+	// No config file found, create default one
+	if err := createDefaultConfig(); err != nil {
+		// Non-fatal: just use defaults if we can't create the file
+		// This might happen due to permissions or read-only filesystem
+		return config, nil
+	}
+
 	return config, nil
+}
+
+// createDefaultConfig creates the default config file if it doesn't exist
+func createDefaultConfig() error {
+	configPath, err := GetDefaultConfigPath()
+	if err != nil {
+		return err
+	}
+
+	// Create config directory if needed
+	configDir := filepath.Dir(configPath)
+	if err := os.MkdirAll(configDir, 0755); err != nil {
+		return fmt.Errorf("creating config directory: %w", err)
+	}
+
+	// Write default config
+	content := GenerateDefaultConfig()
+	if err := os.WriteFile(configPath, []byte(content), 0644); err != nil {
+		return fmt.Errorf("writing config file: %w", err)
+	}
+
+	fmt.Fprintf(os.Stderr, "Created default config: %s\n", configPath)
+	return nil
 }
 
 // LoadFile loads configuration from a specific file
