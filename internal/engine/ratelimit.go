@@ -233,8 +233,18 @@ func (phl *PerHostRateLimiter) GetLimiter(host string) *RateLimiter {
 
 	// Determine the limit for this host
 	limit := phl.defaultLimit
+
+	// Check exact match first
 	if hostLimit, ok := phl.hostLimits[host]; ok {
 		limit = hostLimit
+	} else {
+		// Check wildcard patterns
+		for pattern, patternLimit := range phl.hostLimits {
+			if matchHostPattern(pattern, host) {
+				limit = patternLimit
+				break
+			}
+		}
 	}
 
 	// Create new limiter
@@ -242,4 +252,26 @@ func (phl *PerHostRateLimiter) GetLimiter(host string) *RateLimiter {
 	phl.limiters[host] = limiter
 
 	return limiter
+}
+
+// matchHostPattern checks if host matches a pattern (supports *.example.com wildcards)
+func matchHostPattern(pattern, host string) bool {
+	if pattern == host {
+		return true
+	}
+
+	// Handle wildcard prefix (*.example.com)
+	if len(pattern) > 2 && pattern[0] == '*' && pattern[1] == '.' {
+		suffix := pattern[1:] // .example.com
+		// Check if host ends with suffix or is exactly the suffix without dot
+		if len(host) > len(suffix) {
+			return host[len(host)-len(suffix):] == suffix
+		}
+		// Check exact domain match (pattern *.example.com should match example.com)
+		if "."+host == suffix {
+			return true
+		}
+	}
+
+	return false
 }

@@ -273,3 +273,61 @@ func BenchmarkRateLimitedReader(b *testing.B) {
 		io.Copy(io.Discard, rr)
 	}
 }
+
+func TestPerHostRateLimiter_Wildcard(t *testing.T) {
+	phl := NewPerHostRateLimiter(1024) // 1KB/s default
+
+	// Set wildcard pattern
+	phl.SetHostLimit("*.cdn.example.com", 2048)
+
+	// Test wildcard match
+	limiter := phl.GetLimiter("assets.cdn.example.com")
+	if limiter.Limit() != 2048 {
+		t.Errorf("assets.cdn.example.com limit = %d, want 2048", limiter.Limit())
+	}
+
+	// Test deep subdomain
+	limiter = phl.GetLimiter("deep.sub.cdn.example.com")
+	if limiter.Limit() != 2048 {
+		t.Errorf("deep.sub.cdn.example.com limit = %d, want 2048", limiter.Limit())
+	}
+
+	// Non-matching should use default
+	limiter = phl.GetLimiter("other.example.com")
+	if limiter.Limit() != 1024 {
+		t.Errorf("other.example.com limit = %d, want 1024", limiter.Limit())
+	}
+}
+
+func TestMatchHostPattern(t *testing.T) {
+	tests := []struct {
+		pattern string
+		host    string
+		want    bool
+	}{
+		// Exact match
+		{"example.com", "example.com", true},
+		{"example.com", "other.com", false},
+
+		// Wildcard prefix
+		{"*.example.com", "sub.example.com", true},
+		{"*.example.com", "deep.sub.example.com", true},
+		{"*.example.com", "example.com", true}, // root domain
+		{"*.example.com", "other.com", false},
+		{"*.example.com", "notexample.com", false},
+
+		// Edge cases
+		{"*.com", "example.com", true},
+		{"*", "anything", false}, // Single * not supported
+		{"", "anything", false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.pattern+"_"+tt.host, func(t *testing.T) {
+			got := matchHostPattern(tt.pattern, tt.host)
+			if got != tt.want {
+				t.Errorf("matchHostPattern(%q, %q) = %v, want %v", tt.pattern, tt.host, got, tt.want)
+			}
+		})
+	}
+}

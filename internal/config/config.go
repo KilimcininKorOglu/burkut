@@ -34,9 +34,16 @@ type GeneralConfig struct {
 
 // BandwidthConfig holds bandwidth control settings
 type BandwidthConfig struct {
-	GlobalLimit  string `yaml:"global_limit"`  // e.g., "10M", "500K"
-	PerHostLimit string `yaml:"per_host_limit"`
-	Adaptive     bool   `yaml:"adaptive"`
+	GlobalLimit  string            `yaml:"global_limit"`  // e.g., "10M", "500K"
+	PerHostLimit string            `yaml:"per_host_limit"` // Default per-host limit
+	HostLimits   []HostLimitConfig `yaml:"host_limits,omitempty"` // Specific host limits
+	Adaptive     bool              `yaml:"adaptive"`
+}
+
+// HostLimitConfig holds rate limit for a specific host
+type HostLimitConfig struct {
+	Host  string `yaml:"host"`  // Host pattern (e.g., "slow-server.com", "*.cdn.example.com")
+	Limit string `yaml:"limit"` // Speed limit (e.g., "5M", "500K")
 }
 
 // ProxyConfig holds proxy settings
@@ -92,6 +99,7 @@ func DefaultConfig() *Config {
 		Bandwidth: BandwidthConfig{
 			GlobalLimit:  "",
 			PerHostLimit: "",
+			HostLimits:   nil,
 			Adaptive:     false,
 		},
 		Proxy: ProxyConfig{
@@ -295,7 +303,13 @@ general:
 # Bandwidth control
 bandwidth:
   global_limit: ""        # Global speed limit (e.g., "10M", "500K")
-  per_host_limit: ""      # Per-host speed limit
+  per_host_limit: ""      # Default per-host speed limit
+  # Per-host rate limits (optional)
+  # host_limits:
+  #   - host: "slow-server.com"
+  #     limit: "5M"
+  #   - host: "*.cdn.example.com"
+  #     limit: "20M"
   adaptive: false         # Enable adaptive rate limiting
 
 # Proxy settings
