@@ -278,3 +278,85 @@ func IsMetalink(filename string) bool {
 	lower := strings.ToLower(filename)
 	return strings.HasSuffix(lower, ".metalink") || strings.HasSuffix(lower, ".meta4")
 }
+
+// HasPieceHashes checks if piece hashes are available for verification
+func (f *File) HasPieceHashes() bool {
+	return f.Pieces != nil && len(f.Pieces.Hashes) > 0 && f.Pieces.Length > 0
+}
+
+// GetPieceInfo returns piece hash configuration
+func (f *File) GetPieceInfo() (hashType string, pieceLength int64, hashes []PieceHash) {
+	if f.Pieces == nil {
+		return "", 0, nil
+	}
+	return f.Pieces.Type, f.Pieces.Length, f.Pieces.Hashes
+}
+
+// PieceVerifier handles piece-by-piece verification during download
+type PieceVerifier struct {
+	hashType    string
+	pieceLength int64
+	hashes      map[int]string // piece index -> expected hash
+	totalSize   int64
+}
+
+// NewPieceVerifier creates a new piece verifier from metalink file info
+func NewPieceVerifier(f *File) *PieceVerifier {
+	if !f.HasPieceHashes() {
+		return nil
+	}
+
+	pv := &PieceVerifier{
+		hashType:    strings.ToLower(f.Pieces.Type),
+		pieceLength: f.Pieces.Length,
+		hashes:      make(map[int]string),
+		totalSize:   f.Size,
+	}
+
+	for _, ph := range f.Pieces.Hashes {
+		pv.hashes[ph.Piece] = strings.ToLower(strings.TrimSpace(ph.Value))
+	}
+
+	return pv
+}
+
+// PieceCount returns the total number of pieces
+func (pv *PieceVerifier) PieceCount() int {
+	if pv.pieceLength <= 0 {
+		return 0
+	}
+	count := pv.totalSize / pv.pieceLength
+	if pv.totalSize%pv.pieceLength != 0 {
+		count++
+	}
+	return int(count)
+}
+
+// PieceLength returns the size of each piece
+func (pv *PieceVerifier) PieceLength() int64 {
+	return pv.pieceLength
+}
+
+// HashType returns the hash algorithm type (e.g., "sha-256")
+func (pv *PieceVerifier) HashType() string {
+	return pv.hashType
+}
+
+// GetExpectedHash returns the expected hash for a piece
+func (pv *PieceVerifier) GetExpectedHash(pieceIndex int) (string, bool) {
+	hash, ok := pv.hashes[pieceIndex]
+	return hash, ok
+}
+
+// GetPieceRange returns the byte range for a piece index
+func (pv *PieceVerifier) GetPieceRange(pieceIndex int) (start, end int64) {
+	start = int64(pieceIndex) * pv.pieceLength
+	end = start + pv.pieceLength - 1
+
+	// Clamp to file size
+	if end >= pv.totalSize {
+		end = pv.totalSize - 1
+	}
+
+	return start, end
+}
