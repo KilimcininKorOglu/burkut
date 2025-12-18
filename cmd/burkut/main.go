@@ -69,6 +69,7 @@ type CLIConfig struct {
 	// Phase 2 features
 	LimitRate    string // e.g., "10M", "500K"
 	Checksum     string // e.g., "sha256:abc123..."
+	AutoVerify   bool   // Auto-detect and verify checksum from .sha256 files
 	ConfigFile   string // custom config file path
 	Profile      string // named profile to use
 	InitConfig   bool   // generate default config
@@ -204,6 +205,7 @@ func parseFlags() CLIConfig {
 	// Phase 2 options
 	flag.StringVar(&cfg.LimitRate, "limit-rate", "", "Limit download speed (e.g., 10M, 500K)")
 	flag.StringVar(&cfg.Checksum, "checksum", "", "Verify checksum (e.g., sha256:abc123...)")
+	flag.BoolVar(&cfg.AutoVerify, "verify", false, "Auto-detect and verify checksum (.sha256, .md5, etc.)")
 	flag.StringVar(&cfg.ConfigFile, "config", "", "Use custom config file")
 	flag.StringVar(&cfg.Profile, "profile", "", "Use named profile from config")
 	flag.BoolVar(&cfg.InitConfig, "init-config", false, "Generate default config file")
@@ -325,7 +327,13 @@ func runDownload(cliCfg CLIConfig, url string) int {
 		if cliCfg.Verbose {
 			fmt.Fprintf(os.Stderr, "Expected checksum: %s\n", expectedChecksum.String())
 		}
+	} else if cliCfg.AutoVerify {
+		// Auto-verify will be handled after download
+		if cliCfg.Verbose {
+			fmt.Fprintf(os.Stderr, "Auto-verify enabled\n")
+		}
 	}
+
 
 	// Build HTTP client options
 	httpOpts := []protocol.HTTPClientOption{
@@ -598,6 +606,53 @@ func runDownload(cliCfg CLIConfig, url string) int {
 		return ExitNetworkError
 	}
 
+	// Auto-verify: try to fetch checksum file if enabled
+	if expectedChecksum == nil && cliCfg.AutoVerify {
+		// Try common checksum file extensions
+		checksumExts := []struct {
+			ext string
+			alg engine.ChecksumAlgorithm
+		}{
+			{".sha256", engine.AlgorithmSHA256},
+			{".sha256sum", engine.AlgorithmSHA256},
+			{".sha512", engine.AlgorithmSHA512},
+			{".md5", engine.AlgorithmMD5},
+			{".md5sum", engine.AlgorithmMD5},
+		}
+
+		for _, cs := range checksumExts {
+			checksumURL := url + cs.ext
+			if cliCfg.Verbose {
+				fmt.Fprintf(os.Stderr, "Trying checksum URL: %s\n", checksumURL)
+			}
+
+			// Try to fetch the checksum file
+			checksumValue, alg, fetchErr := engine.FetchAndParseChecksumURL(checksumURL, filepath.Base(outputPath), func(fetchURL string) ([]byte, error) {
+				resp, _, fetchErr := httpClient.Get(ctx, fetchURL)
+				if fetchErr != nil {
+					return nil, fetchErr
+				}
+				defer resp.Close()
+				return io.ReadAll(resp)
+			})
+
+			if fetchErr == nil && checksumValue != "" {
+				expectedChecksum = &engine.Checksum{
+					Algorithm: alg,
+					Value:     strings.ToLower(checksumValue),
+				}
+				if !cliCfg.Quiet {
+					fmt.Fprintf(os.Stderr, "Found checksum file: %s\n", checksumURL)
+				}
+				break
+			}
+		}
+
+		if expectedChecksum == nil && !cliCfg.Quiet {
+			fmt.Fprintf(os.Stderr, "Warning: No checksum file found for auto-verify\n")
+		}
+	}
+
 	// Verify checksum if provided
 	if expectedChecksum != nil {
 		if cliCfg.Verbose || cliCfg.Progress != "none" {
@@ -749,6 +804,7 @@ Options:
 Advanced Options:
       --limit-rate RATE  Limit download speed (e.g., 10M, 500K)
       --checksum SUM     Verify file checksum (e.g., sha256:abc123, blake3:def456)
+      --verify           Auto-detect and verify checksum (.sha256, .md5 files)
       --proxy URL        Use proxy (http://host:port or socks5://host:port)
       --no-check-certificate  Skip TLS certificate verification
       --config FILE      Use custom config file

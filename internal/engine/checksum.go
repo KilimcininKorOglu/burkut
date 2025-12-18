@@ -225,3 +225,125 @@ func ParseChecksumAuto(value string) (*Checksum, error) {
 		Value:     value,
 	}, nil
 }
+
+// ChecksumFileExtensions maps file extensions to their checksum algorithms
+var ChecksumFileExtensions = map[string]ChecksumAlgorithm{
+	".sha256":    AlgorithmSHA256,
+	".sha256sum": AlgorithmSHA256,
+	".sha512":    AlgorithmSHA512,
+	".sha512sum": AlgorithmSHA512,
+	".sha1":      AlgorithmSHA1,
+	".sha1sum":   AlgorithmSHA1,
+	".md5":       AlgorithmMD5,
+	".md5sum":    AlgorithmMD5,
+}
+
+// FindChecksumFile looks for a checksum file for the given filename
+// It tries common extensions like .sha256, .md5, SHA256SUMS, etc.
+// Returns the checksum file path and algorithm if found
+func FindChecksumFile(filepath string) (checksumFile string, algorithm ChecksumAlgorithm, found bool) {
+	// Try direct extensions first
+	for ext, alg := range ChecksumFileExtensions {
+		candidate := filepath + ext
+		if _, err := os.Stat(candidate); err == nil {
+			return candidate, alg, true
+		}
+	}
+
+	return "", "", false
+}
+
+// ParseChecksumFile parses a checksum file and extracts the checksum for the given filename
+// Supports formats:
+//   - "checksum  filename" (GNU coreutils format)
+//   - "checksum *filename" (binary mode)
+//   - "checksum filename" (simple format)
+//   - Just "checksum" (single checksum for single file)
+func ParseChecksumFile(checksumFilePath string, targetFilename string) (string, error) {
+	data, err := os.ReadFile(checksumFilePath)
+	if err != nil {
+		return "", fmt.Errorf("reading checksum file: %w", err)
+	}
+
+	content := strings.TrimSpace(string(data))
+	lines := strings.Split(content, "\n")
+
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+
+		// Try to parse "checksum  filename" or "checksum *filename" format
+		parts := strings.Fields(line)
+		if len(parts) >= 2 {
+			checksum := parts[0]
+			filename := strings.TrimPrefix(parts[len(parts)-1], "*")
+
+			// Check if this line is for our file
+			if filename == targetFilename || strings.HasSuffix(filename, "/"+targetFilename) {
+				return checksum, nil
+			}
+		} else if len(parts) == 1 {
+			// Single checksum (no filename) - assume it's for the target file
+			return parts[0], nil
+		}
+	}
+
+	return "", fmt.Errorf("checksum for %q not found in %s", targetFilename, checksumFilePath)
+}
+
+// FetchAndParseChecksumURL fetches a checksum file from URL and extracts checksum
+// Returns the checksum string (without algorithm prefix)
+func FetchAndParseChecksumURL(checksumURL string, targetFilename string, httpGet func(url string) ([]byte, error)) (string, ChecksumAlgorithm, error) {
+	// Determine algorithm from URL extension
+	algorithm := AlgorithmSHA256 // Default
+	urlLower := strings.ToLower(checksumURL)
+	for ext, alg := range ChecksumFileExtensions {
+		if strings.HasSuffix(urlLower, ext) {
+			algorithm = alg
+			break
+		}
+	}
+
+	// Also check for SUMS file naming convention
+	if strings.Contains(urlLower, "sha256sum") || strings.Contains(urlLower, "sha256") {
+		algorithm = AlgorithmSHA256
+	} else if strings.Contains(urlLower, "sha512sum") || strings.Contains(urlLower, "sha512") {
+		algorithm = AlgorithmSHA512
+	} else if strings.Contains(urlLower, "md5sum") || strings.Contains(urlLower, "md5") {
+		algorithm = AlgorithmMD5
+	} else if strings.Contains(urlLower, "sha1sum") || strings.Contains(urlLower, "sha1") {
+		algorithm = AlgorithmSHA1
+	}
+
+	// Fetch the checksum file
+	data, err := httpGet(checksumURL)
+	if err != nil {
+		return "", "", fmt.Errorf("fetching checksum file: %w", err)
+	}
+
+	content := strings.TrimSpace(string(data))
+	lines := strings.Split(content, "\n")
+
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+
+		parts := strings.Fields(line)
+		if len(parts) >= 2 {
+			checksum := parts[0]
+			filename := strings.TrimPrefix(parts[len(parts)-1], "*")
+
+			if filename == targetFilename || strings.HasSuffix(filename, "/"+targetFilename) {
+				return checksum, algorithm, nil
+			}
+		} else if len(parts) == 1 {
+			return parts[0], algorithm, nil
+		}
+	}
+
+	return "", "", fmt.Errorf("checksum for %q not found", targetFilename)
+}

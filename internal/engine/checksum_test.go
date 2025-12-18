@@ -353,3 +353,80 @@ func TestParseChecksumAuto(t *testing.T) {
 		})
 	}
 }
+
+func TestParseChecksumFile(t *testing.T) {
+	// Create temp directory
+	tmpDir := t.TempDir()
+
+	tests := []struct {
+		name     string
+		content  string
+		target   string
+		want     string
+		wantErr  bool
+	}{
+		{
+			name:    "gnu coreutils format",
+			content: "abc123def456789  myfile.zip\n",
+			target:  "myfile.zip",
+			want:    "abc123def456789",
+		},
+		{
+			name:    "binary mode",
+			content: "abc123def456789 *myfile.zip\n",
+			target:  "myfile.zip",
+			want:    "abc123def456789",
+		},
+		{
+			name:    "single checksum",
+			content: "abc123def456789\n",
+			target:  "any.zip",
+			want:    "abc123def456789",
+		},
+		{
+			name:    "multiple files",
+			content: "aaa111  file1.zip\nbbb222  file2.zip\nccc333  file3.zip\n",
+			target:  "file2.zip",
+			want:    "bbb222",
+		},
+		{
+			name:    "with comments",
+			content: "# This is a comment\nabc123def456789  myfile.zip\n",
+			target:  "myfile.zip",
+			want:    "abc123def456789",
+		},
+		{
+			name:    "not found",
+			content: "abc123  other.zip\n",
+			target:  "myfile.zip",
+			wantErr: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Create checksum file
+			checksumFile := filepath.Join(tmpDir, tt.name+".sha256")
+			if err := os.WriteFile(checksumFile, []byte(tt.content), 0644); err != nil {
+				t.Fatalf("Failed to create test file: %v", err)
+			}
+
+			got, err := ParseChecksumFile(checksumFile, tt.target)
+			if tt.wantErr {
+				if err == nil {
+					t.Error("ParseChecksumFile() expected error, got nil")
+				}
+				return
+			}
+
+			if err != nil {
+				t.Errorf("ParseChecksumFile() error = %v", err)
+				return
+			}
+
+			if got != tt.want {
+				t.Errorf("ParseChecksumFile() = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
