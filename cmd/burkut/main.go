@@ -16,6 +16,7 @@ import (
 	"github.com/kilimcininkoroglu/burkut/internal/config"
 	"github.com/kilimcininkoroglu/burkut/internal/crawler"
 	"github.com/kilimcininkoroglu/burkut/internal/download"
+	"github.com/kilimcininkoroglu/burkut/internal/metalink"
 	"github.com/kilimcininkoroglu/burkut/internal/engine"
 	"github.com/kilimcininkoroglu/burkut/internal/hooks"
 	"github.com/kilimcininkoroglu/burkut/internal/protocol"
@@ -134,11 +135,17 @@ func main() {
 	}
 
 	// Get URL from arguments
-	url := flag.Arg(0)
-	if url == "" {
+	urlArg := flag.Arg(0)
+	if urlArg == "" {
 		fmt.Fprintln(os.Stderr, "Error: URL is required")
 		printUsage()
 		os.Exit(ExitParseError)
+	}
+
+	// Check if argument is a metalink file
+	if metalink.IsMetalink(urlArg) {
+		exitCode := runMetalinkDownload(cliConfig, urlArg)
+		os.Exit(exitCode)
 	}
 
 	// Handle mirror mode shortcuts
@@ -152,11 +159,11 @@ func main() {
 	// Run download
 	var exitCode int
 	if cliConfig.Recursive {
-		exitCode = runRecursiveDownload(cliConfig, url)
+		exitCode = runRecursiveDownload(cliConfig, urlArg)
 	} else if cliConfig.UseTUI {
-		exitCode = runDownloadTUI(cliConfig, url)
+		exitCode = runDownloadTUI(cliConfig, urlArg)
 	} else {
-		exitCode = runDownload(cliConfig, url)
+		exitCode = runDownload(cliConfig, urlArg)
 	}
 	os.Exit(exitCode)
 }
@@ -1324,4 +1331,101 @@ func formatBytes(bytes int64) string {
 	default:
 		return fmt.Sprintf("%d B", bytes)
 	}
+}
+
+// runMetalinkDownload downloads a file using a Metalink file
+func runMetalinkDownload(cliCfg CLIConfig, metalinkFile string) int {
+	// Parse metalink file
+	ml, err := metalink.ParseFile(metalinkFile)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error parsing metalink file: %v\n", err)
+		return ExitParseError
+	}
+
+	// Get the first file (or handle multiple files)
+	file := ml.GetFile()
+	if file == nil {
+		fmt.Fprintln(os.Stderr, "Error: No files found in metalink")
+		return ExitParseError
+	}
+
+	// Print metalink info
+	if !cliCfg.Quiet {
+		fmt.Fprintf(os.Stderr, "Metalink file: %s\n", metalinkFile)
+		fmt.Fprintf(os.Stderr, "File: %s\n", file.Name)
+		if file.Size > 0 {
+			fmt.Fprintf(os.Stderr, "Size: %s\n", formatBytes(file.Size))
+		}
+		if file.Description != "" {
+			fmt.Fprintf(os.Stderr, "Description: %s\n", file.Description)
+		}
+
+		// Show checksum info
+		hashType, hashValue := file.GetPreferredChecksum()
+		if hashValue != "" {
+			fmt.Fprintf(os.Stderr, "Checksum: %s:%s...\n", hashType, hashValue[:min(16, len(hashValue))])
+		}
+
+		fmt.Fprintf(os.Stderr, "URLs: %d available\n", len(file.URLs))
+		fmt.Fprintln(os.Stderr)
+	}
+
+	// Get sorted URLs by priority
+	urls := file.SortedURLs()
+	if len(urls) == 0 {
+		fmt.Fprintln(os.Stderr, "Error: No download URLs in metalink")
+		return ExitParseError
+	}
+
+	// Set output filename from metalink if not specified
+	if cliCfg.Output == "" {
+		cliCfg.Output = file.Name
+	}
+
+	// Set checksum from metalink if not specified
+	if cliCfg.Checksum == "" {
+		hashType, hashValue := file.GetPreferredChecksum()
+		if hashValue != "" {
+			// Convert metalink hash type to our format
+			switch hashType {
+			case "sha-256":
+				cliCfg.Checksum = "sha256:" + hashValue
+			case "sha-512":
+				cliCfg.Checksum = "sha512:" + hashValue
+			case "sha-1":
+				cliCfg.Checksum = "sha1:" + hashValue
+			case "md5":
+				cliCfg.Checksum = "md5:" + hashValue
+			}
+		}
+	}
+
+	// Try URLs in priority order
+	var lastErr error
+	for i, urlEntry := range urls {
+		if !cliCfg.Quiet && cliCfg.Verbose {
+			fmt.Fprintf(os.Stderr, "Trying URL %d/%d: %s\n", i+1, len(urls), urlEntry.URL)
+		}
+
+		exitCode := runDownload(cliCfg, urlEntry.URL)
+		if exitCode == ExitSuccess {
+			return ExitSuccess
+		}
+
+		if !cliCfg.Quiet {
+			fmt.Fprintf(os.Stderr, "URL failed, trying next mirror...\n")
+		}
+		lastErr = fmt.Errorf("download failed with exit code %d", exitCode)
+	}
+
+	fmt.Fprintf(os.Stderr, "Error: All mirrors failed. Last error: %v\n", lastErr)
+	return ExitNetworkError
+}
+
+// min returns the minimum of two integers
+func min(a, b int) int {
+	if a < b {
+		return a
+	}
+	return b
 }
