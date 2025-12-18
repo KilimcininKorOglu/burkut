@@ -289,6 +289,79 @@ func TestHTTPClient_ForceHTTP1_DisablesHTTP2(t *testing.T) {
 	}
 }
 
+func TestParsePins(t *testing.T) {
+	tests := []struct {
+		input    string
+		expected []string
+	}{
+		{
+			input:    "sha256//abc123",
+			expected: []string{"abc123"},
+		},
+		{
+			input:    "sha256/abc123",
+			expected: []string{"abc123"},
+		},
+		{
+			input:    "abc123",
+			expected: []string{"abc123"},
+		},
+		{
+			input:    "sha256//abc123;sha256//def456",
+			expected: []string{"abc123", "def456"},
+		},
+		{
+			input:    "sha256//abc123; sha256//def456 ; sha256//ghi789",
+			expected: []string{"abc123", "def456", "ghi789"},
+		},
+		{
+			input:    "",
+			expected: nil,
+		},
+		{
+			input:    ";;;",
+			expected: nil,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.input, func(t *testing.T) {
+			result := parsePins(tt.input)
+			if len(result) != len(tt.expected) {
+				t.Errorf("parsePins(%q) = %v, want %v", tt.input, result, tt.expected)
+				return
+			}
+			for i := range result {
+				if result[i] != tt.expected[i] {
+					t.Errorf("parsePins(%q)[%d] = %q, want %q", tt.input, i, result[i], tt.expected[i])
+				}
+			}
+		})
+	}
+}
+
+func TestWithPinnedPublicKey_Empty(t *testing.T) {
+	// Should not set any verification with empty pin
+	client := NewHTTPClient(WithPinnedPublicKey(""))
+
+	transport := client.getTransport()
+	if transport.TLSClientConfig != nil && transport.TLSClientConfig.VerifyPeerCertificate != nil {
+		t.Error("VerifyPeerCertificate should be nil with empty pin")
+	}
+}
+
+func TestWithPinnedPublicKey_SetsVerification(t *testing.T) {
+	client := NewHTTPClient(WithPinnedPublicKey("sha256//abc123"))
+
+	transport := client.getTransport()
+	if transport.TLSClientConfig == nil {
+		t.Fatal("TLSClientConfig should not be nil")
+	}
+	if transport.TLSClientConfig.VerifyPeerCertificate == nil {
+		t.Error("VerifyPeerCertificate should be set")
+	}
+}
+
 func TestExtractFilename(t *testing.T) {
 	tests := []struct {
 		name        string

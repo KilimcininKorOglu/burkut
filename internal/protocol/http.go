@@ -3,7 +3,10 @@ package protocol
 
 import (
 	"context"
+	"crypto/sha256"
 	"crypto/tls"
+	"crypto/x509"
+	"encoding/base64"
 	"fmt"
 	"io"
 	"net"
@@ -191,6 +194,94 @@ func WithTLSConfig(config *tls.Config) HTTPClientOption {
 		transport := c.getTransport()
 		transport.TLSClientConfig = config
 	}
+}
+
+// WithPinnedPublicKey sets certificate pinning using SHA256 hash of the public key
+// The pin should be in format "sha256//base64hash" (like curl's --pinnedpubkey)
+// Multiple pins can be provided separated by semicolons
+func WithPinnedPublicKey(pins string) HTTPClientOption {
+	return func(c *HTTPClient) {
+		if pins == "" {
+			return
+		}
+
+		// Parse pins
+		pinList := parsePins(pins)
+		if len(pinList) == 0 {
+			return
+		}
+
+		transport := c.getTransport()
+		if transport.TLSClientConfig == nil {
+			transport.TLSClientConfig = &tls.Config{}
+		}
+
+		// Set custom verification function
+		transport.TLSClientConfig.VerifyPeerCertificate = func(rawCerts [][]byte, verifiedChains [][]*x509.Certificate) error {
+			// If no verified chains (InsecureSkipVerify), parse raw certs
+			var certs []*x509.Certificate
+			if len(verifiedChains) > 0 {
+				for _, chain := range verifiedChains {
+					certs = append(certs, chain...)
+				}
+			} else {
+				for _, raw := range rawCerts {
+					cert, err := x509.ParseCertificate(raw)
+					if err != nil {
+						continue
+					}
+					certs = append(certs, cert)
+				}
+			}
+
+			// Check if any certificate matches any pin
+			for _, cert := range certs {
+				certPin := calculatePublicKeyPin(cert)
+				for _, pin := range pinList {
+					if certPin == pin {
+						return nil // Match found
+					}
+				}
+			}
+
+			return fmt.Errorf("certificate public key does not match any pinned key")
+		}
+	}
+}
+
+// parsePins parses pin string in format "sha256//hash1;sha256//hash2"
+func parsePins(pins string) []string {
+	var result []string
+	for _, pin := range strings.Split(pins, ";") {
+		pin = strings.TrimSpace(pin)
+		if pin == "" {
+			continue
+		}
+		// Remove "sha256//" prefix if present
+		if strings.HasPrefix(pin, "sha256//") {
+			pin = pin[8:]
+		} else if strings.HasPrefix(pin, "sha256/") {
+			pin = pin[7:]
+		}
+		if pin != "" {
+			result = append(result, pin)
+		}
+	}
+	return result
+}
+
+// calculatePublicKeyPin calculates SHA256 hash of certificate's public key
+// Returns base64-encoded hash
+func calculatePublicKeyPin(cert *x509.Certificate) string {
+	// Get the SubjectPublicKeyInfo (SPKI)
+	spki := cert.RawSubjectPublicKeyInfo
+	hash := sha256.Sum256(spki)
+	return base64.StdEncoding.EncodeToString(hash[:])
+}
+
+// GetPublicKeyPin returns the SHA256 pin for a certificate (useful for debugging)
+func GetPublicKeyPin(cert *x509.Certificate) string {
+	return "sha256//" + calculatePublicKeyPin(cert)
 }
 
 // WithForceHTTP1 forces HTTP/1.1 instead of HTTP/2

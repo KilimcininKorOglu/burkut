@@ -80,6 +80,8 @@ type CLIConfig struct {
 	ForceHTTP2    bool   // Force HTTP/2 (fail if not supported)
 	// Conditional download
 	Timestamping bool // Only download if remote is newer
+	// Security
+	PinnedPubKey string // SHA256 public key pin for certificate pinning
 	// Authentication
 	UseNetrc    bool       // Use .netrc for authentication
 	Headers     headerList // Custom headers
@@ -182,6 +184,9 @@ func parseFlags() CLIConfig {
 	// Conditional download options
 	flag.BoolVar(&cfg.Timestamping, "N", false, "Only download if remote file is newer than local")
 	flag.BoolVar(&cfg.Timestamping, "timestamping", false, "Only download if remote file is newer than local")
+
+	// Security options
+	flag.StringVar(&cfg.PinnedPubKey, "pinnedpubkey", "", "SHA256 public key pin (sha256//base64hash)")
 
 	// Authentication options
 	flag.BoolVar(&cfg.UseNetrc, "netrc", false, "Use ~/.netrc for authentication")
@@ -297,6 +302,14 @@ func runDownload(cliCfg CLIConfig, url string) int {
 		httpOpts = append(httpOpts, protocol.WithForceHTTP2(true))
 		if cliCfg.Verbose {
 			fmt.Fprintf(os.Stderr, "Forcing HTTP/2\n")
+		}
+	}
+
+	// Certificate pinning
+	if cliCfg.PinnedPubKey != "" {
+		httpOpts = append(httpOpts, protocol.WithPinnedPublicKey(cliCfg.PinnedPubKey))
+		if cliCfg.Verbose {
+			fmt.Fprintf(os.Stderr, "Certificate pinning enabled\n")
 		}
 	}
 
@@ -689,6 +702,9 @@ Protocol Options:
 
 Conditional Download:
   -N, --timestamping     Only download if remote file is newer than local
+
+Security Options:
+      --pinnedpubkey PIN SHA256 public key pin (sha256//base64hash)
 
 Batch & Automation:
   -i, --input-file FILE  Read URLs from file (batch download)
