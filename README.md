@@ -5,7 +5,8 @@
 ## Features
 
 ### Core
-- **Multi-Protocol** - HTTP, HTTPS, HTTP/2, FTP, FTPS, SFTP downloads
+- **Multi-Protocol** - HTTP, HTTPS, HTTP/2, FTP, FTPS, SFTP, BitTorrent downloads
+- **BitTorrent** - Magnet links and .torrent files with DHT, PEX support
 - **HTTP/3 (QUIC)** - Experimental next-gen protocol support
 - **Smart Resume** - Automatically resume interrupted downloads
 - **Parallel Downloads** - Split files into chunks for faster downloads
@@ -146,6 +147,11 @@ burkut --spider -r https://example.com/docs/
 
 # Prometheus metrics endpoint
 burkut --metrics-addr :9090 https://example.com/large-file.iso
+
+# BitTorrent / Magnet links
+burkut ubuntu-24.04.iso.torrent
+burkut "magnet:?xt=urn:btih:..."
+burkut --limit-rate 5M "magnet:?xt=urn:btih:..."
 ```
 
 ## Config

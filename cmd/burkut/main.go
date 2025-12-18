@@ -24,6 +24,7 @@ import (
 	"github.com/kilimcininkoroglu/burkut/internal/metalink"
 	"github.com/kilimcininkoroglu/burkut/internal/metrics"
 	"github.com/kilimcininkoroglu/burkut/internal/protocol"
+	btorrent "github.com/kilimcininkoroglu/burkut/internal/torrent"
 	"github.com/kilimcininkoroglu/burkut/internal/tui"
 	"github.com/kilimcininkoroglu/burkut/internal/ui"
 	"github.com/kilimcininkoroglu/burkut/internal/version"
@@ -160,6 +161,12 @@ func main() {
 		fmt.Fprintln(os.Stderr, "Error: URL is required")
 		printUsage()
 		os.Exit(ExitParseError)
+	}
+
+	// Check if argument is a torrent file or magnet link
+	if btorrent.IsTorrentFile(urlArg) || btorrent.IsMagnetURI(urlArg) {
+		exitCode := runTorrentDownload(cliConfig, urlArg)
+		os.Exit(exitCode)
 	}
 
 	// Check if argument is a metalink file
@@ -1106,6 +1113,112 @@ func setupHooks(cliCfg CLIConfig) *hooks.Manager {
 	}
 
 	return manager
+}
+
+// runTorrentDownload downloads a torrent file or magnet link
+func runTorrentDownload(cliCfg CLIConfig, source string) int {
+	// Setup signal handling for graceful shutdown
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	sigChan := make(chan os.Signal, 1)
+	signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
+	go func() {
+		<-sigChan
+		fmt.Fprintln(os.Stderr, "\nInterrupted, shutting down...")
+		cancel()
+	}()
+
+	// Configure torrent client
+	torrentCfg := btorrent.DefaultConfig()
+	torrentCfg.DownloadDir = cliCfg.OutputDir
+
+	// Apply rate limit if specified
+	if cliCfg.LimitRate != "" {
+		if limit, err := config.ParseBandwidth(cliCfg.LimitRate); err == nil {
+			torrentCfg.DownloadLimit = limit
+		}
+	}
+
+	// Create client
+	client, err := btorrent.NewClient(torrentCfg)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error creating torrent client: %v\n", err)
+		return ExitGeneralError
+	}
+	defer client.Close()
+
+	// Add torrent
+	var dl *btorrent.Download
+	if btorrent.IsMagnetURI(source) {
+		if !cliCfg.Quiet {
+			fmt.Fprintln(os.Stderr, "Adding magnet link, fetching metadata...")
+		}
+		dl, err = client.AddMagnet(source)
+	} else {
+		if !cliCfg.Quiet {
+			fmt.Fprintf(os.Stderr, "Loading torrent file: %s\n", source)
+		}
+		dl, err = client.AddTorrentFile(source)
+	}
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error adding torrent: %v\n", err)
+		return ExitGeneralError
+	}
+
+	if !cliCfg.Quiet {
+		fmt.Fprintf(os.Stderr, "Downloading: %s\n", dl.Name)
+		fmt.Fprintf(os.Stderr, "Size: %s\n", formatBytes(dl.TotalSize))
+		fmt.Fprintf(os.Stderr, "Info Hash: %s\n", dl.InfoHash)
+	}
+
+	// Progress callback
+	progressCb := func(p btorrent.Progress) {
+		if cliCfg.Quiet {
+			return
+		}
+		switch cliCfg.Progress {
+		case "bar", "minimal":
+			fmt.Fprintf(os.Stderr, "\r\033[K%s: %.1f%% [%s/%s] %s/s P:%d S:%d",
+				p.Name,
+				p.Percent,
+				formatBytes(p.Downloaded),
+				formatBytes(p.TotalSize),
+				formatBytes(p.Speed),
+				p.Peers,
+				p.Seeds)
+		case "json":
+			fmt.Printf(`{"name":"%s","percent":%.1f,"downloaded":%d,"total":%d,"speed":%d,"peers":%d,"seeds":%d,"status":"%s"}`+"\n",
+				p.Name, p.Percent, p.Downloaded, p.TotalSize, p.Speed, p.Peers, p.Seeds, p.Status)
+		}
+	}
+
+	// Download
+	err = client.Download(ctx, dl, progressCb)
+
+	if err != nil {
+		if ctx.Err() != nil {
+			return ExitInterrupted
+		}
+		fmt.Fprintf(os.Stderr, "Error downloading: %v\n", err)
+		return ExitNetworkError
+	}
+
+	if !cliCfg.Quiet {
+		fmt.Fprintf(os.Stderr, "\nDownload complete: %s\n", dl.Name)
+	}
+
+	// Run hooks
+	hookManager := setupHooks(cliCfg)
+	if hookManager.Count() > 0 {
+		elapsed := time.Since(dl.StartTime)
+		payload := hooks.CreatePayload(hooks.EventComplete, source, dl.Name, filepath.Join(cliCfg.OutputDir, dl.Name)).
+			WithProgress(dl.Downloaded, dl.TotalSize, 0, 100.0).
+			WithDuration(elapsed)
+		hookManager.ExecuteAsync(ctx, payload)
+	}
+
+	return ExitSuccess
 }
 
 // runDownloadTUI runs the download with interactive TUI
