@@ -14,15 +14,18 @@
 
 ### Advanced
 - **Mirror Support** - Automatic failover to backup URLs
-- **Metalink Support** - Parse .metalink/.meta4 files with multiple mirrors
+- **Metalink Support** - Parse .metalink/.meta4 files with multiple mirrors and piece verification
 - **Recursive Download** - Spider mode for website mirroring (`-r`, `-m`)
 - **Batch Downloads** - Download multiple files from URL lists
 - **Checksum Verification** - MD5, SHA1, SHA256, SHA512, BLAKE3
+- **Auto-verify** - Automatic checksum file detection (`--verify`)
 - **Conditional Download** - Only download if newer (`-N`)
 - **Certificate Pinning** - SHA256 public key pinning (`--pinnedpubkey`)
+- **Spider Mode** - List URLs without downloading (`--spider`)
+- **Prometheus Metrics** - Export metrics for monitoring (`--metrics-addr`)
 
 ### Configuration
-- **Rate Limiting** - Control bandwidth usage
+- **Rate Limiting** - Global and per-host bandwidth control with wildcard support
 - **Proxy Support** - HTTP and SOCKS5 proxies
 - **Authentication** - Basic auth, netrc, custom headers
 - **Hooks & Webhooks** - Run commands or send notifications
@@ -134,6 +137,15 @@ burkut --http2 https://example.com/file.zip   # force HTTP/2
 
 # Certificate pinning
 burkut --pinnedpubkey sha256//base64hash... https://secure.example.com/file
+
+# Auto-verify checksum (fetches .sha256, .md5 automatically)
+burkut --verify https://example.com/file.iso
+
+# Spider mode (list URLs without downloading)
+burkut --spider -r https://example.com/docs/
+
+# Prometheus metrics endpoint
+burkut --metrics-addr :9090 https://example.com/large-file.iso
 ```
 
 ## Config
@@ -149,6 +161,12 @@ general:
 
 bandwidth:
   global_limit: "10M"
+  # Per-host rate limits (supports wildcards)
+  host_limits:
+    - host: "slow-server.com"
+      limit: "5M"
+    - host: "*.cdn.example.com"
+      limit: "20M"
 
 profiles:
   fast:
