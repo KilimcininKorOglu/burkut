@@ -22,6 +22,7 @@ import (
 	"github.com/kilimcininkoroglu/burkut/internal/engine"
 	"github.com/kilimcininkoroglu/burkut/internal/hooks"
 	"github.com/kilimcininkoroglu/burkut/internal/metalink"
+	"github.com/kilimcininkoroglu/burkut/internal/metrics"
 	"github.com/kilimcininkoroglu/burkut/internal/protocol"
 	"github.com/kilimcininkoroglu/burkut/internal/tui"
 	"github.com/kilimcininkoroglu/burkut/internal/ui"
@@ -109,6 +110,8 @@ type CLIConfig struct {
 	ConvertLinks    bool   // Convert links to local paths
 	MirrorMode      bool   // Mirror mode (-m = -r -N -l inf)
 	SpiderMode      bool   // Spider mode (list URLs only, no download)
+	// Metrics
+	MetricsAddr     string // Prometheus metrics endpoint address (e.g., ":9090")
 }
 
 func main() {
@@ -117,6 +120,18 @@ func main() {
 	if cliConfig.ShowVersion {
 		fmt.Println(version.Full())
 		os.Exit(ExitSuccess)
+	}
+
+	// Start metrics server if requested
+	if cliConfig.MetricsAddr != "" {
+		m := metrics.New()
+		metricsServer := metrics.NewServer(cliConfig.MetricsAddr, m)
+		if err := metricsServer.Start(); err != nil {
+			fmt.Fprintf(os.Stderr, "Warning: Failed to start metrics server: %v\n", err)
+		} else {
+			fmt.Fprintf(os.Stderr, "Metrics server listening on %s\n", cliConfig.MetricsAddr)
+			defer metricsServer.Stop()
+		}
 	}
 
 	// Handle --init-config
@@ -264,6 +279,9 @@ func parseFlags() CLIConfig {
 	flag.BoolVar(&cfg.MirrorMode, "m", false, "Mirror mode (-r -N -l inf --page-requisites)")
 	flag.BoolVar(&cfg.MirrorMode, "mirror", false, "Mirror mode")
 	flag.BoolVar(&cfg.SpiderMode, "spider", false, "Spider mode (list URLs only, no download)")
+
+	// Metrics options
+	flag.StringVar(&cfg.MetricsAddr, "metrics-addr", "", "Prometheus metrics endpoint (e.g., :9090)")
 
 	flag.Usage = printUsage
 	flag.Parse()
@@ -852,6 +870,9 @@ Recursive Download (Spider Mode):
   -w, --wait TIME        Wait time between requests (e.g., '1s')
       --random-wait      Add random 0-500ms to wait time
   -e, --robots-off       Ignore robots.txt
+
+Monitoring:
+      --metrics-addr ADDR  Prometheus metrics endpoint (e.g., :9090)
 
 Exit Codes:
   0  Success
