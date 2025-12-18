@@ -209,6 +209,11 @@ func (c *Crawler) Crawl(ctx context.Context, startURL string) error {
 
 	c.stats.EndTime = time.Now()
 
+	// Convert links if enabled
+	if c.config.ConvertLinks {
+		ConvertAllFiles(c.queue, c.config.OutputDir, c.baseURL)
+	}
+
 	return nil
 }
 

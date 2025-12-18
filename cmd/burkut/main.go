@@ -786,7 +786,7 @@ Recursive Download (Spider Mode):
       --accept-ext EXTS  Accept extensions (comma-separated)
       --reject-ext EXTS  Reject extensions (comma-separated)
   -p, --page-requisites  Download page requisites (CSS, JS, images)
-  -k, --convert-links    Convert links to local paths (TODO)
+  -k, --convert-links    Convert links to local paths
   -w, --wait TIME        Wait time between requests (e.g., '1s')
       --random-wait      Add random 0-500ms to wait time
   -e, --robots-off       Ignore robots.txt
@@ -1213,6 +1213,9 @@ func runRecursiveDownload(cliCfg CLIConfig, startURL string) int {
 	if cliCfg.RandomWait {
 		crawlConfig.RandomWait = 500 * time.Millisecond
 	}
+
+	// Convert links option
+	crawlConfig.ConvertLinks = cliCfg.ConvertLinks
 
 	// Create filter
 	filter := &crawler.Filter{
