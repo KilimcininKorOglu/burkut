@@ -68,6 +68,7 @@ type OutputConfig struct {
 	ProgressStyle string `yaml:"progress_style"` // bar, minimal, json
 	Colors        bool   `yaml:"colors"`
 	Theme         string `yaml:"theme"` // auto, dark, light, mono
+	UseTUI        bool   `yaml:"use_tui"` // Use interactive TUI mode by default
 }
 
 // LoggingConfig holds logging settings
@@ -116,6 +117,7 @@ func DefaultConfig() *Config {
 			ProgressStyle: "bar",
 			Colors:        true,
 			Theme:         "auto",
+			UseTUI:        false,
 		},
 		Logging: LoggingConfig{
 			Level:  "info",
@@ -332,6 +334,7 @@ output:
   progress_style: "bar"   # Progress display: bar, minimal, json
   colors: true            # Enable colored output
   theme: "auto"           # Color theme: auto, dark, light, mono
+  use_tui: false          # Use interactive TUI mode by default
 
 # Logging settings
 logging:

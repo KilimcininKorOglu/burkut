@@ -123,6 +123,14 @@ func main() {
 		os.Exit(ExitSuccess)
 	}
 
+	// Load config and apply defaults (if not overridden by CLI flags)
+	if cfg, err := loadConfig(cliConfig); err == nil {
+		// Apply TUI setting from config if not set via CLI flag
+		if !cliConfig.UseTUI && cfg.Output.UseTUI {
+			cliConfig.UseTUI = true
+		}
+	}
+
 	// Start metrics server if requested
 	if cliConfig.MetricsAddr != "" {
 		m := metrics.New()
