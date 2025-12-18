@@ -78,6 +78,8 @@ type CLIConfig struct {
 	UseHTTP3      bool   // Use HTTP/3 (QUIC) protocol
 	ForceHTTP1    bool   // Force HTTP/1.1 (disable HTTP/2)
 	ForceHTTP2    bool   // Force HTTP/2 (fail if not supported)
+	// Conditional download
+	Timestamping bool // Only download if remote is newer
 	// Authentication
 	UseNetrc    bool       // Use .netrc for authentication
 	Headers     headerList // Custom headers
@@ -176,6 +178,10 @@ func parseFlags() CLIConfig {
 	flag.BoolVar(&cfg.UseHTTP3, "http3", false, "Use HTTP/3 (QUIC) protocol (experimental)")
 	flag.BoolVar(&cfg.ForceHTTP1, "http1", false, "Force HTTP/1.1 (disable HTTP/2)")
 	flag.BoolVar(&cfg.ForceHTTP2, "http2", false, "Force HTTP/2 (fail if server doesn't support)")
+
+	// Conditional download options
+	flag.BoolVar(&cfg.Timestamping, "N", false, "Only download if remote file is newer than local")
+	flag.BoolVar(&cfg.Timestamping, "timestamping", false, "Only download if remote file is newer than local")
 
 	// Authentication options
 	flag.BoolVar(&cfg.UseNetrc, "netrc", false, "Use ~/.netrc for authentication")
@@ -384,7 +390,33 @@ func runDownload(cliCfg CLIConfig, url string) int {
 		fmt.Fprintf(os.Stderr, "Size: %s\n", ui.FormatBytes(meta.ContentLength))
 		fmt.Fprintf(os.Stderr, "Resume supported: %v\n", meta.AcceptRanges)
 		fmt.Fprintf(os.Stderr, "Protocol: %s\n", meta.Protocol)
+		if !meta.LastModified.IsZero() {
+			fmt.Fprintf(os.Stderr, "Last-Modified: %s\n", meta.LastModified.Format(time.RFC1123))
+		}
 		fmt.Fprintf(os.Stderr, "Saving to: %s\n", outputPath)
+	}
+
+	// Check timestamping condition
+	if cliCfg.Timestamping {
+		check, err := engine.CheckTimestamp(outputPath, meta)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error checking timestamp: %v\n", err)
+			return ExitGeneralError
+		}
+
+		if !check.ShouldDownload {
+			if !cliCfg.Quiet {
+				fmt.Printf("File '%s' is up-to-date, skipping download.\n", meta.Filename)
+				if cliCfg.Verbose {
+					fmt.Fprintf(os.Stderr, "Reason: %s\n", check.Reason)
+				}
+			}
+			return ExitSuccess
+		}
+
+		if cliCfg.Verbose {
+			fmt.Fprintf(os.Stderr, "Download needed: %s\n", check.Reason)
+		}
 	}
 
 	// Create downloader
@@ -512,6 +544,15 @@ func runDownload(cliCfg CLIConfig, url string) int {
 
 		if cliCfg.Verbose {
 			fmt.Fprintf(os.Stderr, "Checksum verified successfully!\n")
+		}
+	}
+
+	// Set file modification time to match server (for timestamping)
+	if !meta.LastModified.IsZero() {
+		if err := engine.SetFileModTime(outputPath, meta.LastModified); err != nil {
+			if cliCfg.Verbose {
+				fmt.Fprintf(os.Stderr, "Warning: Could not set file modification time: %v\n", err)
+			}
 		}
 	}
 
@@ -645,6 +686,9 @@ Protocol Options:
       --http1            Force HTTP/1.1 (disable HTTP/2)
       --http2            Force HTTP/2 (fail if server doesn't support)
       --http3            Use HTTP/3 (QUIC) protocol (experimental)
+
+Conditional Download:
+  -N, --timestamping     Only download if remote file is newer than local
 
 Batch & Automation:
   -i, --input-file FILE  Read URLs from file (batch download)
