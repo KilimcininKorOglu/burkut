@@ -1,6 +1,24 @@
 # Burkut
 
-**Burkut** is a modern download manager written in Go. Named after the golden eagle (*berkut*) in Turkish mythology, it combines the best of wget and curl with HTTP/3, parallel downloads, and smart resume.
+![Go Version](https://img.shields.io/badge/go-1.21+-blue)
+![License](https://img.shields.io/badge/license-MIT-green)
+![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20Linux%20%7C%20macOS%20%7C%20FreeBSD-lightgrey)
+
+**Burkut** is a modern download manager written in Go. Named after the golden eagle (*burkut/berkut*) in Turkish mythology — a symbol of speed, power, and precision — it combines the best of wget and curl with HTTP/3, parallel downloads, BitTorrent support, and smart resume.
+
+## Table of Contents
+
+- [Features](#features)
+- [Installation](#installation)
+- [Quick Start](#quick-start)
+- [Usage](#usage)
+- [Examples](#examples)
+- [Configuration](#config)
+- [Build](#build)
+- [Shell Completions](#shell-completions)
+- [Exit Codes](#exit-codes)
+- [Contributing](#contributing)
+- [License](#license)
 
 ## Features
 
@@ -34,10 +52,38 @@
 
 ## Installation
 
+### Download Binary (Recommended)
+
+Download the latest release for your platform from [GitHub Releases](https://github.com/kilimcininkoroglu/burkut/releases):
+
+| Platform | File |
+|----------|------|
+| Windows 64-bit | `burkut-windows-amd64.exe` |
+| Windows ARM | `burkut-windows-arm64.exe` |
+| Linux 64-bit | `burkut-linux-amd64` |
+| Linux ARM64 | `burkut-linux-arm64` |
+| macOS Intel | `burkut-darwin-amd64` |
+| macOS Apple Silicon | `burkut-darwin-arm64` |
+| FreeBSD | `burkut-freebsd-amd64` |
+
+```bash
+# Linux/macOS: Make executable and move to PATH
+chmod +x burkut-linux-amd64
+sudo mv burkut-linux-amd64 /usr/local/bin/burkut
+```
+
+### Build from Source
+
 ```bash
 git clone https://github.com/kilimcininkoroglu/burkut.git
 cd burkut
 go build -o burkut ./cmd/burkut
+```
+
+### Go Install
+
+```bash
+go install github.com/kilimcininkoroglu/burkut/cmd/burkut@latest
 ```
 
 ## Quick Start
@@ -184,10 +230,23 @@ profiles:
 
 ## Build
 
+### Linux / macOS
+
 ```bash
-make build              # Current platform
+make build               # Current platform
 make build-all-platforms # All platforms
-make test               # Run tests
+make test                # Run tests
+make lint                # Run linter
+make check               # Full check (fmt, vet, lint, test)
+```
+
+### Windows
+
+```cmd
+build.bat build          # Current platform
+build.bat build-all      # All platforms
+build.bat test           # Run tests
+build.bat clean          # Clean artifacts
 ```
 
 ## Shell Completions
@@ -206,6 +265,40 @@ cp completions/burkut.fish ~/.config/fish/completions/
 . completions/burkut.ps1
 ```
 
+## Exit Codes
+
+| Code | Meaning |
+|------|---------|
+| 0 | Success |
+| 1 | General error |
+| 2 | Parse/config error |
+| 3 | Network error |
+| 4 | Authentication error |
+| 5 | TLS/SSL error |
+| 6 | Checksum mismatch |
+| 7 | Timeout |
+| 8 | Interrupted (Ctrl+C) |
+
+Use in scripts:
+```bash
+burkut https://example.com/file.zip
+if [ $? -eq 0 ]; then
+    echo "Download successful"
+elif [ $? -eq 6 ]; then
+    echo "Checksum verification failed!"
+fi
+```
+
+## Contributing
+
+Contributions are welcome! Please feel free to submit a Pull Request.
+
+1. Fork the repository
+2. Create your feature branch (`git checkout -b feature/amazing-feature`)
+3. Commit your changes (`git commit -m 'Add some amazing feature'`)
+4. Push to the branch (`git push origin feature/amazing-feature`)
+5. Open a Pull Request
+
 ## License
 
-MIT License
+MIT License - see [LICENSE](LICENSE) file for details.
