@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/kilimcininkoroglu/burkut/internal/config"
+	"github.com/kilimcininkoroglu/burkut/internal/crawler"
 	"github.com/kilimcininkoroglu/burkut/internal/download"
 	"github.com/kilimcininkoroglu/burkut/internal/engine"
 	"github.com/kilimcininkoroglu/burkut/internal/hooks"
@@ -88,6 +89,20 @@ type CLIConfig struct {
 	BasicAuth   string     // Basic auth (user:password)
 	// TUI
 	UseTUI bool // Use interactive TUI mode
+	// Recursive download (spider mode)
+	Recursive       bool   // Enable recursive download
+	MaxDepth        int    // Maximum recursion depth (0 = start URL only)
+	SpanHosts       bool   // Follow links to other hosts
+	AcceptPatterns  string // Accept patterns (comma-separated)
+	RejectPatterns  string // Reject patterns (comma-separated)
+	AcceptExt       string // Accept extensions (comma-separated)
+	RejectExt       string // Reject extensions (comma-separated)
+	WaitTime        string // Wait time between requests (e.g., "1s")
+	RandomWait      bool   // Add random 0-500ms to wait time
+	RobotsOff       bool   // Ignore robots.txt
+	PageRequisites  bool   // Download page requisites (CSS, JS, images)
+	ConvertLinks    bool   // Convert links to local paths
+	MirrorMode      bool   // Mirror mode (-m = -r -N -l inf)
 }
 
 func main() {
@@ -126,9 +141,19 @@ func main() {
 		os.Exit(ExitParseError)
 	}
 
+	// Handle mirror mode shortcuts
+	if cliConfig.MirrorMode {
+		cliConfig.Recursive = true
+		cliConfig.Timestamping = true
+		cliConfig.MaxDepth = 0 // Unlimited
+		cliConfig.PageRequisites = true
+	}
+
 	// Run download
 	var exitCode int
-	if cliConfig.UseTUI {
+	if cliConfig.Recursive {
+		exitCode = runRecursiveDownload(cliConfig, url)
+	} else if cliConfig.UseTUI {
 		exitCode = runDownloadTUI(cliConfig, url)
 	} else {
 		exitCode = runDownload(cliConfig, url)
@@ -197,6 +222,30 @@ func parseFlags() CLIConfig {
 
 	// TUI option
 	flag.BoolVar(&cfg.UseTUI, "tui", false, "Use interactive TUI mode")
+
+	// Recursive download options
+	flag.BoolVar(&cfg.Recursive, "r", false, "Enable recursive download")
+	flag.BoolVar(&cfg.Recursive, "recursive", false, "Enable recursive download")
+	flag.IntVar(&cfg.MaxDepth, "l", 5, "Maximum recursion depth (0 = start URL only)")
+	flag.IntVar(&cfg.MaxDepth, "level", 5, "Maximum recursion depth (0 = start URL only)")
+	flag.BoolVar(&cfg.SpanHosts, "span-hosts", false, "Follow links to other hosts")
+	flag.StringVar(&cfg.AcceptPatterns, "A", "", "Accept patterns (comma-separated, e.g., '*.pdf,*.doc')")
+	flag.StringVar(&cfg.AcceptPatterns, "accept", "", "Accept patterns (comma-separated)")
+	flag.StringVar(&cfg.RejectPatterns, "R", "", "Reject patterns (comma-separated, e.g., '*.exe,*.zip')")
+	flag.StringVar(&cfg.RejectPatterns, "reject", "", "Reject patterns (comma-separated)")
+	flag.StringVar(&cfg.AcceptExt, "accept-ext", "", "Accept extensions (comma-separated, e.g., 'html,htm,php')")
+	flag.StringVar(&cfg.RejectExt, "reject-ext", "", "Reject extensions (comma-separated)")
+	flag.StringVar(&cfg.WaitTime, "w", "", "Wait time between requests (e.g., '1s', '500ms')")
+	flag.StringVar(&cfg.WaitTime, "wait", "", "Wait time between requests")
+	flag.BoolVar(&cfg.RandomWait, "random-wait", false, "Add random 0-500ms to wait time")
+	flag.BoolVar(&cfg.RobotsOff, "e", false, "Ignore robots.txt")
+	flag.BoolVar(&cfg.RobotsOff, "robots-off", false, "Ignore robots.txt")
+	flag.BoolVar(&cfg.PageRequisites, "p", false, "Download page requisites (CSS, JS, images)")
+	flag.BoolVar(&cfg.PageRequisites, "page-requisites", false, "Download page requisites")
+	flag.BoolVar(&cfg.ConvertLinks, "k", false, "Convert links to local paths")
+	flag.BoolVar(&cfg.ConvertLinks, "convert-links", false, "Convert links to local paths")
+	flag.BoolVar(&cfg.MirrorMode, "m", false, "Mirror mode (-r -N -l inf --page-requisites)")
+	flag.BoolVar(&cfg.MirrorMode, "mirror", false, "Mirror mode")
 
 	flag.Usage = printUsage
 	flag.Parse()
@@ -716,6 +765,21 @@ Batch & Automation:
 Interface:
       --tui              Use interactive TUI mode (fullscreen)
 
+Recursive Download (Spider Mode):
+  -r, --recursive        Enable recursive download
+  -l, --level DEPTH      Maximum recursion depth (default: 5, 0 = unlimited)
+  -m, --mirror           Mirror mode (-r -N -l 0 -p)
+      --span-hosts       Follow links to other hosts
+  -A, --accept PATTERNS  Accept patterns (comma-separated, e.g., '*.pdf,*.doc')
+  -R, --reject PATTERNS  Reject patterns (comma-separated)
+      --accept-ext EXTS  Accept extensions (comma-separated)
+      --reject-ext EXTS  Reject extensions (comma-separated)
+  -p, --page-requisites  Download page requisites (CSS, JS, images)
+  -k, --convert-links    Convert links to local paths (TODO)
+  -w, --wait TIME        Wait time between requests (e.g., '1s')
+      --random-wait      Add random 0-500ms to wait time
+  -e, --robots-off       Ignore robots.txt
+
 Exit Codes:
   0  Success
   1  General error
@@ -1089,4 +1153,175 @@ func runDownloadTUI(cliCfg CLIConfig, url string) int {
 	}
 
 	return ExitSuccess
+}
+
+func runRecursiveDownload(cliCfg CLIConfig, startURL string) int {
+	// Setup signal handling for graceful shutdown
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	sigCh := make(chan os.Signal, 1)
+	signal.Notify(sigCh, os.Interrupt, syscall.SIGTERM)
+
+	go func() {
+		<-sigCh
+		fmt.Fprintln(os.Stderr, "\nInterrupted, stopping crawler...")
+		cancel()
+	}()
+
+	// Determine output directory
+	outputDir := cliCfg.Output
+	if outputDir == "" {
+		outputDir = "."
+	}
+
+	// Create crawler config
+	crawlConfig := crawler.DefaultConfig()
+	crawlConfig.MaxDepth = cliCfg.MaxDepth
+	crawlConfig.OutputDir = outputDir
+	crawlConfig.RespectRobots = !cliCfg.RobotsOff
+	crawlConfig.ConvertLinks = cliCfg.ConvertLinks
+	crawlConfig.Workers = cliCfg.Connections
+	if crawlConfig.Workers <= 0 {
+		crawlConfig.Workers = 2
+	}
+
+	// Set user agent
+	crawlConfig.UserAgent = "Burkut/1.0 (Website Mirror; +https://github.com/kilimcininkoroglu/burkut)"
+
+	// Parse wait time
+	if cliCfg.WaitTime != "" {
+		if waitDuration, err := time.ParseDuration(cliCfg.WaitTime); err == nil {
+			crawlConfig.WaitTime = waitDuration
+		} else {
+			fmt.Fprintf(os.Stderr, "Warning: Invalid wait time %q, using default\n", cliCfg.WaitTime)
+		}
+	}
+
+	// Random wait
+	if cliCfg.RandomWait {
+		crawlConfig.RandomWait = 500 * time.Millisecond
+	}
+
+	// Create filter
+	filter := &crawler.Filter{
+		SameDomain:     !cliCfg.SpanHosts,
+		FollowExternal: cliCfg.SpanHosts,
+		PageRequisites: cliCfg.PageRequisites,
+	}
+
+	// Set patterns
+	if cliCfg.AcceptPatterns != "" {
+		filter.SetAcceptPatterns(cliCfg.AcceptPatterns)
+	}
+	if cliCfg.RejectPatterns != "" {
+		filter.SetRejectPatterns(cliCfg.RejectPatterns)
+	}
+	if cliCfg.AcceptExt != "" {
+		filter.SetAcceptExtensions(cliCfg.AcceptExt)
+	}
+	if cliCfg.RejectExt != "" {
+		filter.SetRejectExtensions(cliCfg.RejectExt)
+	}
+
+	crawlConfig.Filter = filter
+
+	// Create crawler
+	c := crawler.NewCrawler(crawlConfig)
+
+	// Progress callback
+	if !cliCfg.Quiet {
+		lastReport := time.Time{}
+		c.SetProgressCallback(func(stats *crawler.Stats) {
+			// Rate limit output
+			if time.Since(lastReport) < 500*time.Millisecond {
+				return
+			}
+			lastReport = time.Now()
+
+			elapsed := time.Since(stats.StartTime).Round(time.Second)
+			fmt.Fprintf(os.Stderr, "\r[%s] Downloaded: %d | Failed: %d | Skipped: %d | Depth: %d | %s",
+				elapsed,
+				stats.DownloadedURLs,
+				stats.FailedURLs,
+				stats.SkippedURLs,
+				stats.CurrentDepth,
+				truncateURL(stats.CurrentURL, 50),
+			)
+		})
+	}
+
+	// Error callback
+	if cliCfg.Verbose {
+		c.SetErrorCallback(func(url string, err error) {
+			fmt.Fprintf(os.Stderr, "\nError: %s: %v\n", url, err)
+		})
+	}
+
+	// Print start message
+	if !cliCfg.Quiet {
+		fmt.Fprintf(os.Stderr, "Starting recursive download from: %s\n", startURL)
+		fmt.Fprintf(os.Stderr, "Output directory: %s\n", outputDir)
+		fmt.Fprintf(os.Stderr, "Max depth: %d, Workers: %d\n", cliCfg.MaxDepth, crawlConfig.Workers)
+		if cliCfg.RobotsOff {
+			fmt.Fprintln(os.Stderr, "Note: robots.txt checking disabled")
+		}
+		fmt.Fprintln(os.Stderr)
+	}
+
+	// Start crawling
+	err := c.Crawl(ctx, startURL)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "\nCrawl error: %v\n", err)
+		return ExitNetworkError
+	}
+
+	// Print final stats
+	stats := c.GetStats()
+	if !cliCfg.Quiet {
+		fmt.Fprintf(os.Stderr, "\n\nCrawl completed!\n")
+		fmt.Fprintf(os.Stderr, "Total URLs: %d\n", stats.TotalURLs)
+		fmt.Fprintf(os.Stderr, "Downloaded: %d\n", stats.DownloadedURLs)
+		fmt.Fprintf(os.Stderr, "Failed: %d\n", stats.FailedURLs)
+		fmt.Fprintf(os.Stderr, "Skipped: %d\n", stats.SkippedURLs)
+		fmt.Fprintf(os.Stderr, "Total bytes: %s\n", formatBytes(stats.TotalBytes))
+		fmt.Fprintf(os.Stderr, "Elapsed time: %s\n", stats.EndTime.Sub(stats.StartTime).Round(time.Second))
+	}
+
+	if stats.FailedURLs > 0 {
+		return ExitGeneralError
+	}
+
+	return ExitSuccess
+}
+
+// truncateURL truncates a URL for display
+func truncateURL(url string, maxLen int) string {
+	if len(url) <= maxLen {
+		return url
+	}
+	return url[:maxLen-3] + "..."
+}
+
+// formatBytes formats bytes to human-readable string
+func formatBytes(bytes int64) string {
+	const (
+		KB = 1024
+		MB = KB * 1024
+		GB = MB * 1024
+		TB = GB * 1024
+	)
+
+	switch {
+	case bytes >= TB:
+		return fmt.Sprintf("%.2f TB", float64(bytes)/TB)
+	case bytes >= GB:
+		return fmt.Sprintf("%.2f GB", float64(bytes)/GB)
+	case bytes >= MB:
+		return fmt.Sprintf("%.2f MB", float64(bytes)/MB)
+	case bytes >= KB:
+		return fmt.Sprintf("%.2f KB", float64(bytes)/KB)
+	default:
+		return fmt.Sprintf("%d B", bytes)
+	}
 }
