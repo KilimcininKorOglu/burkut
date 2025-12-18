@@ -1,25 +1,25 @@
-# 🦅 Burkut
+# Burkut
 
 **Burkut** is a modern download manager written in Go. Named after the golden eagle (*berkut*) in Turkish mythology, it combines the best of wget and curl with HTTP/3, parallel downloads, and smart resume.
 
-## ✨ Features
+## Features
 
-- 📥 **Multi-Protocol** - HTTP, HTTPS, FTP, SFTP downloads
-- ⚡ **HTTP/3 (QUIC)** - Experimental next-gen protocol support
-- 🔄 **Smart Resume** - Automatically resume interrupted downloads
-- 🚀 **Parallel Downloads** - Split files into chunks for faster downloads
-- 📊 **Progress Display** - Beautiful progress bars (bar, minimal, json modes)
-- 🔀 **Mirror Support** - Automatic failover to backup URLs
-- 📦 **Batch Downloads** - Download multiple files from URL lists
-- 🔐 **Checksum Verification** - MD5, SHA1, SHA256, SHA512, BLAKE3
-- ⏱️ **Rate Limiting** - Control bandwidth usage
-- 🌍 **Proxy Support** - HTTP and SOCKS5 proxies
-- 🔑 **Authentication** - Basic auth, netrc, custom headers
-- 🪝 **Hooks & Webhooks** - Run commands or send notifications
-- ⚙️ **YAML Config** - Profiles for different use cases
-- 🖥️ **Interactive TUI** - Fullscreen mode with Bubbletea
+- **Multi-Protocol** - HTTP, HTTPS, FTP, SFTP downloads
+- **HTTP/3 (QUIC)** - Experimental next-gen protocol support
+- **Smart Resume** - Automatically resume interrupted downloads
+- **Parallel Downloads** - Split files into chunks for faster downloads
+- **Progress Display** - Beautiful progress bars (bar, minimal, json modes)
+- **Mirror Support** - Automatic failover to backup URLs
+- **Batch Downloads** - Download multiple files from URL lists
+- **Checksum Verification** - MD5, SHA1, SHA256, SHA512, BLAKE3
+- **Rate Limiting** - Control bandwidth usage
+- **Proxy Support** - HTTP and SOCKS5 proxies
+- **Authentication** - Basic auth, netrc, custom headers
+- **Hooks & Webhooks** - Run commands or send notifications
+- **YAML Config** - Profiles for different use cases
+- **Interactive TUI** - Fullscreen mode with Bubbletea
 
-## 📦 Installation
+## Installation
 
 ```bash
 git clone https://github.com/kilimcininkoroglu/burkut.git
@@ -27,7 +27,7 @@ cd burkut
 go build -o burkut ./cmd/burkut
 ```
 
-## 🚀 Quick Start
+## Quick Start
 
 ```bash
 # Simple download
@@ -43,7 +43,7 @@ burkut -n 8 https://example.com/large.iso
 burkut --limit-rate 1M https://example.com/file.iso
 ```
 
-## 📖 Usage
+## Usage
 
 ```
 burkut [OPTIONS] URL
@@ -76,7 +76,7 @@ Authentication:
   -H, --header HEADER      Custom header (repeatable)
 ```
 
-## 📋 Examples
+## Examples
 
 ```bash
 # Checksum verification
@@ -108,7 +108,7 @@ burkut sftp://user@host.com/path/to/file.tar.gz
 burkut --tui https://example.com/large-file.iso
 ```
 
-## ⚙️ Config
+## Config
 
 ```bash
 burkut --init-config  # Creates ~/.config/burkut/config.yaml
@@ -130,7 +130,7 @@ profiles:
       http: "socks5://127.0.0.1:9050"
 ```
 
-## 🔧 Build
+## Build
 
 ```bash
 make build              # Current platform
@@ -138,7 +138,7 @@ make build-all-platforms # All platforms
 make test               # Run tests
 ```
 
-## 🐚 Shell Completions
+## Shell Completions
 
 ```bash
 # Bash
@@ -154,6 +154,6 @@ cp completions/burkut.fish ~/.config/fish/completions/
 . completions/burkut.ps1
 ```
 
-## 📄 License
+## License
 
 MIT License
