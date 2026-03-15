@@ -336,8 +336,8 @@ func (d *Downloader) stateSaver(ctx context.Context) {
 
 // GetProgress returns current download progress
 func (d *Downloader) GetProgress() Progress {
-	d.mu.RLock()
-	defer d.mu.RUnlock()
+	d.mu.Lock()
+	defer d.mu.Unlock()
 
 	now := time.Now()
 	currentBytes := atomic.LoadInt64(&d.downloaded)
@@ -366,7 +366,6 @@ func (d *Downloader) GetProgress() Progress {
 		}
 	}
 
-	// Update last values (need write lock for this, but we're keeping it simple)
 	d.lastBytes = currentBytes
 	d.lastTime = now
 
