@@ -155,7 +155,8 @@ func (c *SFTPClient) connect(ctx context.Context, rawURL string) (*ssh.Client, *
 	if c.insecure {
 		sshConfig.HostKeyCallback = ssh.InsecureIgnoreHostKey()
 	} else {
-		sshConfig.HostKeyCallback = ssh.InsecureIgnoreHostKey() // TODO: Implement known_hosts
+		fmt.Fprintf(os.Stderr, "Warning: SFTP host key verification is not implemented. Use --no-check-certificate to allow insecure connections.\n")
+		return nil, nil, "", fmt.Errorf("SFTP host key verification not available: use --no-check-certificate to allow insecure connections")
 	}
 
 	// Connect SSH
