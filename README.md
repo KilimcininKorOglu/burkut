@@ -1,6 +1,6 @@
 # Burkut
 
-![Go Version](https://img.shields.io/badge/go-1.21+-blue)
+![Go Version](https://img.shields.io/badge/go-1.24+-blue)
 ![License](https://img.shields.io/badge/license-MIT-green)
 ![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20Linux%20%7C%20macOS%20%7C%20FreeBSD-lightgrey)
 
@@ -62,6 +62,7 @@ Download the latest release for your platform from [GitHub Releases](https://git
 | Windows ARM         | `burkut-windows-arm64.exe` |
 | Linux 64-bit        | `burkut-linux-amd64`       |
 | Linux ARM64         | `burkut-linux-arm64`       |
+| Linux ARM           | `burkut-linux-arm`         |
 | macOS Intel         | `burkut-darwin-amd64`      |
 | macOS Apple Silicon | `burkut-darwin-arm64`      |
 | FreeBSD             | `burkut-freebsd-amd64`     |
@@ -77,7 +78,7 @@ sudo mv burkut-linux-amd64 /usr/local/bin/burkut
 ```bash
 git clone https://github.com/kilimcininkoroglu/burkut.git
 cd burkut
-go build -o burkut ./cmd/burkut
+make build
 ```
 
 ### Go Install
