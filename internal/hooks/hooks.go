@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	neturl "net/url"
 	"os"
 	"os/exec"
 	"runtime"
@@ -151,8 +152,15 @@ type WebhookHook struct {
 	client  *http.Client
 }
 
-// NewWebhookHook creates a new webhook hook
-func NewWebhookHook(url string, events ...Event) *WebhookHook {
+// NewWebhookHook creates a new webhook hook.
+// Returns nil if the URL is invalid or uses a non-HTTP(S) scheme.
+func NewWebhookHook(webhookURL string, events ...Event) *WebhookHook {
+	parsed, err := neturl.Parse(webhookURL)
+	if err != nil || (parsed.Scheme != "http" && parsed.Scheme != "https") {
+		fmt.Fprintf(os.Stderr, "Warning: invalid webhook URL %q (must use http or https scheme)\n", webhookURL)
+		return nil
+	}
+	url := webhookURL
 	if len(events) == 0 {
 		events = []Event{EventComplete, EventError}
 	}
@@ -256,7 +264,10 @@ func (m *Manager) AddCommand(command string, events ...Event) {
 
 // AddWebhook adds a webhook hook
 func (m *Manager) AddWebhook(url string, events ...Event) {
-	m.Add(NewWebhookHook(url, events...))
+	hook := NewWebhookHook(url, events...)
+	if hook != nil {
+		m.Add(hook)
+	}
 }
 
 // Execute runs all hooks for the given event
