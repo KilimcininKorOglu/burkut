@@ -109,31 +109,65 @@ burkut --limit-rate 1M https://example.com/file.iso
 burkut [OPTIONS] URL
 
 Options:
-  -o, --output FILE        Output filename
-  -P, --output-dir DIR     Output directory
-  -c, --continue           Resume download
-  -n, --connections N      Parallel connections (default: 4)
-  -T, --timeout DUR        Timeout (default: 30s)
-  -q, --quiet              Quiet mode
-  -v, --verbose            Verbose output
-  --progress TYPE          bar, minimal, json, none
+  -o, --output FILE        Write output to FILE
+  -P, --output-dir DIR     Save files to DIR (default: current directory)
+  -c, --continue           Resume partially downloaded file
+  -n, --connections N      Number of parallel connections (default: 4)
+  -T, --timeout DUR        Connection timeout (default: 30s)
+  -q, --quiet              Quiet mode (no progress output)
+  -v, --verbose            Verbose output (show headers and chunk info)
+      --progress TYPE      Progress display: bar, minimal, json, none
+      --no-color           Disable colored output
 
 Advanced:
-  --limit-rate RATE        Speed limit (e.g., 10M, 500K)
-  --checksum SUM           Verify checksum (sha256:..., blake3:...)
-  --proxy URL              HTTP/SOCKS5 proxy
-  --mirrors URLs           Fallback mirrors (comma-separated)
-  -i, --input-file FILE    Batch download from file
-  --on-complete CMD        Run command on success
-  --webhook URL            Send webhook notification
-  --http3                  Use HTTP/3 (experimental)
-  --config FILE            Custom config file
-  --profile NAME           Use config profile
+      --limit-rate RATE    Limit download speed (e.g., 10M, 500K)
+      --checksum SUM       Verify file checksum (e.g., sha256:abc123, blake3:def456)
+      --verify             Auto-detect and verify checksum (.sha256, .md5 files)
+      --proxy URL          Use proxy (http://host:port or socks5://host:port)
+      --no-check-certificate  Skip TLS certificate verification
+      --config FILE        Use custom config file
+      --profile NAME       Use named profile from config
+      --init-config        Generate default config file
 
 Authentication:
-  -u, --user USER:PASS     Basic authentication
-  --netrc                  Use ~/.netrc for credentials
-  -H, --header HEADER      Custom header (repeatable)
+  -u, --user USER:PASS     Basic authentication credentials
+      --netrc              Use ~/.netrc for authentication
+  -H, --header HEADER      Add custom header (can be repeated)
+
+Protocol:
+      --http1              Force HTTP/1.1 (disable HTTP/2)
+      --http2              Force HTTP/2 (fail if server doesn't support)
+      --http3              Use HTTP/3 (QUIC) protocol (experimental)
+
+Conditional & Security:
+  -N, --timestamping       Only download if remote file is newer than local
+      --pinnedpubkey PIN   SHA256 public key pin (sha256//base64hash)
+
+Batch & Automation:
+  -i, --input-file FILE    Read URLs from file (batch download)
+      --on-complete CMD    Run command after successful download
+      --on-error CMD       Run command after failed download
+      --webhook URL        Send webhook notification on complete/error
+      --mirrors URLs       Comma-separated mirror URLs for fallback
+
+Interface:
+      --tui                Use interactive TUI mode (fullscreen)
+
+Recursive Download:
+  -r, --recursive          Enable recursive download
+  -l, --level DEPTH        Maximum recursion depth (default: 5)
+  -m, --mirror             Mirror mode (-r -N -l 0 -p)
+      --span-hosts         Follow links to other hosts
+  -A, --accept PATTERNS    Accept patterns (comma-separated)
+  -R, --reject PATTERNS    Reject patterns (comma-separated)
+  -p, --page-requisites    Download page requisites (CSS, JS, images)
+  -k, --convert-links      Convert links to local paths
+      --spider             Spider mode: list URLs only (no download)
+  -w, --wait TIME          Wait time between requests (e.g., '1s')
+  -e, --robots-off         Ignore robots.txt
+
+Monitoring:
+      --metrics-addr ADDR  Prometheus metrics endpoint (e.g., :9090)
 ```
 
 ## Examples
