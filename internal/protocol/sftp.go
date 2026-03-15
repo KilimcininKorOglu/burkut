@@ -10,6 +10,7 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"time"
 
@@ -183,6 +184,13 @@ func (c *SFTPClient) connect(ctx context.Context, rawURL string) (*ssh.Client, *
 
 // loadPrivateKey loads an SSH private key from file
 func loadPrivateKey(keyPath string) (ssh.Signer, error) {
+	info, err := os.Stat(keyPath)
+	if err != nil {
+		return nil, err
+	}
+	if runtime.GOOS != "windows" && info.Mode().Perm()&0077 != 0 {
+		fmt.Fprintf(os.Stderr, "Warning: private key %s has overly permissive permissions\n", keyPath)
+	}
 	key, err := os.ReadFile(keyPath)
 	if err != nil {
 		return nil, err
