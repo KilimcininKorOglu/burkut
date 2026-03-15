@@ -301,6 +301,25 @@ func parseFlags() CLIConfig {
 	flag.Usage = printUsage
 	flag.Parse()
 
+	// Validate flag values
+	if cfg.Connections < 1 {
+		cfg.Connections = 1
+	}
+	if cfg.Timeout <= 0 {
+		cfg.Timeout = 30 * time.Second
+	}
+	switch cfg.Progress {
+	case "bar", "minimal", "json", "none":
+		// valid
+	default:
+		fmt.Fprintf(os.Stderr, "Warning: unknown progress style %q, using \"bar\"\n", cfg.Progress)
+		cfg.Progress = "bar"
+	}
+	if cfg.ForceHTTP1 && cfg.ForceHTTP2 {
+		fmt.Fprintf(os.Stderr, "Error: --http1 and --http2 are mutually exclusive\n")
+		os.Exit(ExitParseError)
+	}
+
 	// Apply quiet mode
 	if cfg.Quiet {
 		cfg.Progress = "none"
