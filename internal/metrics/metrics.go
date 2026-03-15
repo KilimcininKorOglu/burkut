@@ -207,8 +207,11 @@ func NewServer(addr string, m *Metrics) *Server {
 
 	return &Server{
 		server: &http.Server{
-			Addr:    addr,
-			Handler: mux,
+			Addr:         addr,
+			Handler:      mux,
+			ReadTimeout:  10 * time.Second,
+			WriteTimeout: 10 * time.Second,
+			IdleTimeout:  60 * time.Second,
 		},
 		metrics: m,
 	}
