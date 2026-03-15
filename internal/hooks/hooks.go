@@ -113,17 +113,30 @@ func (h *CommandHook) shouldHandle(event Event) bool {
 	return false
 }
 
+// sanitizeEnvValue escapes shell metacharacters in environment variable values
+// to prevent command injection when hooks are executed via sh -c.
+func sanitizeEnvValue(value string) string {
+	replacer := strings.NewReplacer(
+		"`", "\\`",
+		"$", "\\$",
+		"!", "\\!",
+		"\"", "\\\"",
+		"\\", "\\\\",
+	)
+	return replacer.Replace(value)
+}
+
 func (h *CommandHook) buildEnv(payload *Payload) []string {
 	return []string{
-		fmt.Sprintf("BURKUT_EVENT=%s", payload.Event),
-		fmt.Sprintf("BURKUT_URL=%s", payload.URL),
-		fmt.Sprintf("BURKUT_FILENAME=%s", payload.Filename),
-		fmt.Sprintf("BURKUT_OUTPUT=%s", payload.OutputPath),
+		fmt.Sprintf("BURKUT_EVENT=%s", sanitizeEnvValue(string(payload.Event))),
+		fmt.Sprintf("BURKUT_URL=%s", sanitizeEnvValue(payload.URL)),
+		fmt.Sprintf("BURKUT_FILENAME=%s", sanitizeEnvValue(payload.Filename)),
+		fmt.Sprintf("BURKUT_OUTPUT=%s", sanitizeEnvValue(payload.OutputPath)),
 		fmt.Sprintf("BURKUT_SIZE=%d", payload.TotalSize),
 		fmt.Sprintf("BURKUT_DOWNLOADED=%d", payload.Downloaded),
 		fmt.Sprintf("BURKUT_PERCENT=%.2f", payload.Percent),
 		fmt.Sprintf("BURKUT_SPEED=%d", payload.Speed),
-		fmt.Sprintf("BURKUT_ERROR=%s", payload.Error),
+		fmt.Sprintf("BURKUT_ERROR=%s", sanitizeEnvValue(payload.Error)),
 		fmt.Sprintf("BURKUT_DURATION=%.2f", payload.Duration),
 	}
 }
