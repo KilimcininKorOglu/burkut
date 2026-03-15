@@ -5,6 +5,32 @@ All notable changes to Burkut will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [v0.2.0] - 2026-03-15
+
+### Security
+- Reject SFTP connections when host key verification is not available (88f039f)
+- Sanitize environment variables in hook command execution (cd7f9bd)
+- Validate webhook URLs to prevent SSRF (5a64444)
+
+### Bug Fixes
+- Use write lock in GetProgress to prevent race condition (ef3849f)
+- Use runtime.GOOS instead of OS environment variable for platform detection (db642e3)
+- Add read/write timeouts to metrics HTTP server (5a8644e)
+- Add validation for conflicting and invalid CLI flag values (3e68b49)
+- Use strconv.ParseInt for Content-Length in HTTP/3 client (d9f54b9)
+- Prevent array index out of bounds in FormatBytes (0c92f3b)
+- Reduce busy-wait in crawler work feeder with consecutive empty checks (2c684df)
+- Accept parent context in QueueManager constructor (42b327c)
+- Add panic recovery in async TUI goroutine (d3a90c5)
+- Add panic recovery and error logging in async hook execution (5edfbcb)
+- Add IPv6 loopback to default NoProxy list (ba2f437)
+- Warn when SSH private key file has overly permissive permissions (5c22592)
+- Add missing CLI flags to bash and zsh completion scripts (8fb5906)
+- Handle ANSI color fallback in build.bat for older Windows (3cbfbe1)
+
+### Documentation
+- Sync README usage section with actual --help output (57dce78)
+
 ## [v0.1.1] - 2026-03-15
 
 ### Refactoring
