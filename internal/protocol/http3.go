@@ -8,6 +8,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"strconv"
 	"time"
 
 	"github.com/quic-go/quic-go/http3"
@@ -175,9 +176,9 @@ func parseHTTP3Metadata(rawURL string, resp *http.Response) (*Metadata, error) {
 
 	// Content-Length
 	if cl := resp.Header.Get("Content-Length"); cl != "" {
-		var length int64
-		fmt.Sscanf(cl, "%d", &length)
-		meta.ContentLength = length
+		if length, err := strconv.ParseInt(cl, 10, 64); err == nil {
+			meta.ContentLength = length
+		}
 	}
 
 	// Last-Modified
