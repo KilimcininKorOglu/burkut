@@ -5,6 +5,11 @@ All notable changes to Burkut will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/),
 and this project adheres to [Semantic Versioning](https://semver.org/).
 
+## [v0.1.1] - 2026-03-15
+
+### Refactoring
+- Replace hardcoded user-agent versions with dynamic values (bb8a9d9)
+
 ## [v0.1.0] - 2026-03-15
 
 ### Features
