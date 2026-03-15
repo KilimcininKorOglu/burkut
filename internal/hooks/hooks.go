@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
+	"runtime"
 	"strings"
 	"time"
 )
@@ -296,7 +297,7 @@ func (m *Manager) Clear() {
 
 // isWindows returns true if running on Windows
 func isWindows() bool {
-	return strings.Contains(strings.ToLower(os.Getenv("OS")), "windows")
+	return runtime.GOOS == "windows"
 }
 
 // CreatePayload creates a new payload for an event
