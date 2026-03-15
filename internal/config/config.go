@@ -106,7 +106,7 @@ func DefaultConfig() *Config {
 		Proxy: ProxyConfig{
 			HTTP:    "",
 			HTTPS:   "",
-			NoProxy: "localhost,127.0.0.1",
+			NoProxy: "localhost,127.0.0.1,[::1]",
 		},
 		TLS: TLSConfig{
 			Verify:     true,
@@ -348,7 +348,7 @@ bandwidth:
 proxy:
   http: ""                # HTTP proxy URL
   https: ""               # HTTPS proxy URL
-  no_proxy: "localhost,127.0.0.1"  # Bypass proxy for these hosts
+  no_proxy: "localhost,127.0.0.1,[::1]"  # Bypass proxy for these hosts
 
 # TLS/SSL settings
 tls:
