@@ -291,7 +291,14 @@ func (m *Manager) Execute(ctx context.Context, payload *Payload) error {
 func (m *Manager) ExecuteAsync(ctx context.Context, payload *Payload) {
 	for _, hook := range m.hooks {
 		go func(h Hook) {
-			_ = h.Execute(ctx, payload)
+			defer func() {
+				if p := recover(); p != nil {
+					fmt.Fprintf(os.Stderr, "hook panic in %s: %v\n", h.Name(), p)
+				}
+			}()
+			if err := h.Execute(ctx, payload); err != nil {
+				fmt.Fprintf(os.Stderr, "hook error in %s: %v\n", h.Name(), err)
+			}
 		}(hook)
 	}
 }
