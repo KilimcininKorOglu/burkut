@@ -11,10 +11,15 @@ _burkut() {
     # All options
     opts="-o --output -P --output-dir -c --continue -n --connections
           -T --timeout -q --quiet -v --verbose --progress --no-color
-          -h --help -V --version --limit-rate --checksum --proxy
+          -h --help -V --version --limit-rate --checksum --verify --proxy
           --no-check-certificate --config --profile --init-config
           -i --input-file --on-complete --on-error --webhook
-          --mirrors --http3 --netrc -u --user -H --header"
+          --mirrors --http1 --http2 --http3 --netrc -u --user -H --header
+          -N --timestamping --pinnedpubkey --tui --metrics-addr
+          -r --recursive -l --level -m --mirror --span-hosts
+          -A --accept -R --reject --accept-ext --reject-ext
+          -p --page-requisites -k --convert-links --spider
+          -w --wait --random-wait -e --robots-off"
 
     # Handle options that require arguments
     case "${prev}" in
