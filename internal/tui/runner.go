@@ -2,6 +2,8 @@ package tui
 
 import (
 	"context"
+	"fmt"
+	"os"
 	"sync"
 	"time"
 
@@ -54,7 +56,14 @@ func (r *Runner) Start() error {
 // StartAsync starts the TUI in a goroutine
 func (r *Runner) StartAsync() {
 	r.program = tea.NewProgram(r.model, tea.WithAltScreen())
-	go r.program.Run()
+	go func() {
+		defer func() {
+			if p := recover(); p != nil {
+				fmt.Fprintf(os.Stderr, "TUI panic: %v\n", p)
+			}
+		}()
+		r.program.Run()
+	}()
 }
 
 // UpdateProgress sends a progress update to the TUI
