@@ -337,7 +337,7 @@ func NewHTTPClient(opts ...HTTPClientOption) *HTTPClient {
 				IdleConnTimeout:     90 * time.Second,
 			},
 		},
-		userAgent: "Burkut/0.1",
+		userAgent: "Burkut",
 		headers:   make(map[string]string),
 	}
 

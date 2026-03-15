@@ -94,7 +94,7 @@ func DefaultConfig() *Config {
 			Timeout:     30 * time.Second,
 			Retries:     3,
 			RetryDelay:  5 * time.Second,
-			UserAgent:   "Burkut/0.1",
+			UserAgent:   "",
 			Continue:    true,
 		},
 		Bandwidth: BandwidthConfig{
@@ -329,7 +329,7 @@ general:
   timeout: 30s            # Connection timeout
   retries: 3              # Number of retries on failure
   retry_delay: 5s         # Delay between retries
-  user_agent: "Burkut/0.1"
+  user_agent: ""              # Leave empty for auto (Burkut/<version>)
   continue: true          # Always try to resume downloads
 
 # Bandwidth control

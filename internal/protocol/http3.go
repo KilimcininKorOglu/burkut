@@ -58,7 +58,7 @@ func NewHTTP3Client(opts ...HTTP3ClientOption) *HTTP3Client {
 			Transport: roundTripper,
 			Timeout:   30 * time.Second,
 		},
-		userAgent: "Burkut/0.1 (HTTP/3)",
+		userAgent: "Burkut (HTTP/3)",
 		headers:   make(map[string]string),
 	}
 
