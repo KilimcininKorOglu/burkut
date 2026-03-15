@@ -305,7 +305,7 @@ goto :eof
 
 :test-unit
 echo %CYAN%Running unit tests...%NC%
-go test -v -short -coverprofile=coverage.out ./...
+go test -v -short -race -coverprofile=coverage.out ./...
 if errorlevel 1 (
     echo %RED%Unit tests failed%NC%
     exit /b 1
@@ -316,7 +316,7 @@ goto :eof
 
 :test-integration
 echo %CYAN%Running integration tests...%NC%
-go test -v -tags=integration ./...
+go test -v -race -tags=integration ./...
 if errorlevel 1 (
     echo %RED%Integration tests failed%NC%
     exit /b 1
@@ -326,7 +326,7 @@ goto :eof
 
 :test-cover
 echo %CYAN%Running tests with coverage...%NC%
-go test -v -coverprofile=coverage.out -covermode=atomic ./...
+go test -v -race -coverprofile=coverage.out -covermode=atomic ./...
 if errorlevel 1 (
     echo %RED%Tests failed%NC%
     exit /b 1
