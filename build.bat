@@ -5,12 +5,21 @@ setlocal enabledelayedexpansion
 :: Build script for Windows (equivalent to Makefile)
 :: Named after the golden eagle (berkut) in Turkish mythology
 
-:: Colors (Windows 10+)
-set "GREEN=[92m"
-set "YELLOW=[93m"
-set "RED=[91m"
-set "CYAN=[96m"
-set "NC=[0m"
+:: Colors (with fallback for pre-Windows 10)
+>nul 2>&1 reg query "HKCU\Console" /v VirtualTerminalLevel
+if %errorlevel%==0 (
+    set "GREEN=[92m"
+    set "YELLOW=[93m"
+    set "RED=[91m"
+    set "CYAN=[96m"
+    set "NC=[0m"
+) else (
+    set "GREEN="
+    set "YELLOW="
+    set "RED="
+    set "CYAN="
+    set "NC="
+)
 
 :: Variables
 set "BINARY_NAME=burkut"
