@@ -1,6 +1,7 @@
 package download
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"testing"
@@ -323,7 +324,7 @@ func TestExtractFilename(t *testing.T) {
 
 func TestNewQueueManager(t *testing.T) {
 	q := NewQueue("")
-	qm := NewQueueManager(q, 4)
+	qm := NewQueueManager(context.Background(), q, 4)
 	
 	if qm == nil {
 		t.Fatal("NewQueueManager returned nil")

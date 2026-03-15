@@ -375,8 +375,8 @@ type QueueManager struct {
 }
 
 // NewQueueManager creates a new queue manager
-func NewQueueManager(queue *Queue, concurrency int) *QueueManager {
-	ctx, cancel := context.WithCancel(context.Background())
+func NewQueueManager(ctx context.Context, queue *Queue, concurrency int) *QueueManager {
+	ctx, cancel := context.WithCancel(ctx)
 	return &QueueManager{
 		queue:       queue,
 		concurrency: concurrency,
