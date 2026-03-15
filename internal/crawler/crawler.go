@@ -194,6 +194,7 @@ func (c *Crawler) Crawl(ctx context.Context, startURL string) error {
 
 	// Feed work to workers
 	go func() {
+		emptyChecks := 0
 		for {
 			select {
 			case <-ctx.Done():
@@ -202,14 +203,19 @@ func (c *Crawler) Crawl(ctx context.Context, startURL string) error {
 			default:
 				item := c.queue.Next()
 				if item == nil {
-					// No more work, check if workers are done
-					time.Sleep(100 * time.Millisecond)
+					time.Sleep(500 * time.Millisecond)
 					if c.queue.PendingCount() == 0 {
-						close(workCh)
-						return
+						emptyChecks++
+						if emptyChecks >= 3 {
+							close(workCh)
+							return
+						}
+					} else {
+						emptyChecks = 0
 					}
 					continue
 				}
+				emptyChecks = 0
 				workCh <- item
 			}
 		}
