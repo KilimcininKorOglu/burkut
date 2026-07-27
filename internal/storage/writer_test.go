@@ -17,7 +17,7 @@ func TestNewFileWriter(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewFileWriter() error = %v", err)
 	}
-	defer w.Close()
+	defer func() { _ = w.Close() }()
 
 	if w.Path() != path {
 		t.Errorf("Path() = %q, want %q", w.Path(), path)
@@ -50,7 +50,7 @@ func TestNewFileWriter_WithDirectory(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewFileWriter() error = %v", err)
 	}
-	defer w.Close()
+	defer func() { _ = w.Close() }()
 
 	if !FileExists(path) {
 		t.Error("File was not created in nested directory")
@@ -82,7 +82,7 @@ func TestFileWriter_Write(t *testing.T) {
 	}
 
 	// Close and verify content
-	w.Close()
+	_ = w.Close()
 
 	content, err := os.ReadFile(path)
 	if err != nil {
@@ -124,7 +124,7 @@ func TestFileWriter_WriteAt(t *testing.T) {
 		}
 	}
 
-	w.Close()
+	_ = w.Close()
 
 	// Verify content
 	content, err := os.ReadFile(path)
@@ -169,7 +169,7 @@ func TestFileWriter_WriteChunk(t *testing.T) {
 		}
 	}
 
-	w.Close()
+	_ = w.Close()
 
 	// Verify content
 	content, err := os.ReadFile(path)
@@ -191,9 +191,9 @@ func TestFileWriter_Sync(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewFileWriter() error = %v", err)
 	}
-	defer w.Close()
+	defer func() { _ = w.Close() }()
 
-	w.Write([]byte("test data"))
+	_, _ = w.Write([]byte("test data"))
 
 	// Sync should not return error
 	if err := w.Sync(); err != nil {
@@ -215,7 +215,7 @@ func TestFileWriter_Truncate(t *testing.T) {
 		t.Fatalf("Truncate() error = %v", err)
 	}
 
-	w.Close()
+	_ = w.Close()
 
 	// Verify new size
 	size, err := FileSize(path)
@@ -236,7 +236,7 @@ func TestFileWriter_ClosedOperations(t *testing.T) {
 		t.Fatalf("NewFileWriter() error = %v", err)
 	}
 
-	w.Close()
+	_ = w.Close()
 
 	// Operations on closed writer should fail
 	if _, err := w.Write([]byte("test")); err == nil {
@@ -275,7 +275,7 @@ func TestOpenFileWriter(t *testing.T) {
 	if err != nil {
 		t.Fatalf("OpenFileWriter() error = %v", err)
 	}
-	defer w.Close()
+	defer func() { _ = w.Close() }()
 
 	// Written should reflect existing content
 	if w.Written() != 15 { // len("initial content")
@@ -283,7 +283,7 @@ func TestOpenFileWriter(t *testing.T) {
 	}
 
 	// Can write more data
-	w.WriteAt([]byte("more"), 15)
+	_, _ = w.WriteAt([]byte("more"), 15)
 }
 
 func TestFileExists(t *testing.T) {
@@ -355,7 +355,7 @@ func BenchmarkWriteAt(b *testing.B) {
 	if err != nil {
 		b.Fatalf("NewFileWriter() error = %v", err)
 	}
-	defer w.Close()
+	defer func() { _ = w.Close() }()
 
 	data := make([]byte, 1024)
 	for i := range data {
@@ -364,7 +364,7 @@ func BenchmarkWriteAt(b *testing.B) {
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		w.WriteAt(data, int64(i*1024))
+		_, _ = w.WriteAt(data, int64(i*1024))
 	}
 }
 
@@ -377,7 +377,7 @@ func BenchmarkWriteChunk(b *testing.B) {
 	if err != nil {
 		b.Fatalf("NewFileWriter() error = %v", err)
 	}
-	defer w.Close()
+	defer func() { _ = w.Close() }()
 
 	data := make([]byte, 1024)
 	for i := range data {
@@ -387,7 +387,7 @@ func BenchmarkWriteChunk(b *testing.B) {
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		reader := bytes.NewReader(data)
-		w.WriteChunk(reader, int64(i*1024), 1024)
+		_, _ = w.WriteChunk(reader, int64(i*1024), 1024)
 	}
 }
 

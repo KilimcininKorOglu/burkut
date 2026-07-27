@@ -9,10 +9,12 @@ import (
 	"encoding/base64"
 	"fmt"
 	"io"
+	"maps"
 	"net"
 	"net/http"
 	"net/url"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -68,9 +70,7 @@ func WithHeader(key, value string) HTTPClientOption {
 // WithHeaders adds multiple custom headers
 func WithHeaders(headers map[string]string) HTTPClientOption {
 	return func(c *HTTPClient) {
-		for key, value := range headers {
-			c.headers[key] = value
-		}
+		maps.Copy(c.headers, headers)
 	}
 }
 
@@ -218,7 +218,7 @@ func WithPinnedPublicKey(pins string) HTTPClientOption {
 		}
 
 		// Set custom verification function
-		transport.TLSClientConfig.VerifyPeerCertificate = func(rawCerts [][]byte, verifiedChains [][]*x509.Certificate) error {
+		transport.TLSClientConfig.VerifyPeerCertificate = func(rawCerts [][]byte, verifiedChains [][]*x509.Certificate) error { // #nosec G123 -- custom verification is intentional for the opt-in insecure/cert-pinning path
 			// If no verified chains (InsecureSkipVerify), parse raw certs
 			var certs []*x509.Certificate
 			if len(verifiedChains) > 0 {
@@ -238,10 +238,8 @@ func WithPinnedPublicKey(pins string) HTTPClientOption {
 			// Check if any certificate matches any pin
 			for _, cert := range certs {
 				certPin := calculatePublicKeyPin(cert)
-				for _, pin := range pinList {
-					if certPin == pin {
-						return nil // Match found
-					}
+				if slices.Contains(pinList, certPin) {
+					return nil // Match found
 				}
 			}
 
@@ -253,7 +251,7 @@ func WithPinnedPublicKey(pins string) HTTPClientOption {
 // parsePins parses pin string in format "sha256//hash1;sha256//hash2"
 func parsePins(pins string) []string {
 	var result []string
-	for _, pin := range strings.Split(pins, ";") {
+	for pin := range strings.SplitSeq(pins, ";") {
 		pin = strings.TrimSpace(pin)
 		if pin == "" {
 			continue
@@ -367,7 +365,7 @@ func (c *HTTPClient) Head(ctx context.Context, rawURL string) (*Metadata, error)
 	if err != nil {
 		return nil, fmt.Errorf("executing HEAD request: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("HEAD request failed: %s", resp.Status)
@@ -391,13 +389,13 @@ func (c *HTTPClient) Get(ctx context.Context, rawURL string) (io.ReadCloser, *Me
 	}
 
 	if resp.StatusCode != http.StatusOK {
-		resp.Body.Close()
+		_ = resp.Body.Close()
 		return nil, nil, fmt.Errorf("GET request failed: %s", resp.Status)
 	}
 
 	meta, err := c.parseMetadata(rawURL, resp)
 	if err != nil {
-		resp.Body.Close()
+		_ = resp.Body.Close()
 		return nil, nil, err
 	}
 
@@ -425,13 +423,13 @@ func (c *HTTPClient) GetRange(ctx context.Context, rawURL string, start, end int
 	// 206 Partial Content is expected for range requests
 	// 200 OK means server doesn't support ranges (will send full file)
 	if resp.StatusCode != http.StatusPartialContent && resp.StatusCode != http.StatusOK {
-		resp.Body.Close()
+		_ = resp.Body.Close()
 		return nil, fmt.Errorf("range GET request failed: %s", resp.Status)
 	}
 
 	// If server returned 200 instead of 206, it doesn't support ranges
 	if resp.StatusCode == http.StatusOK {
-		resp.Body.Close()
+		_ = resp.Body.Close()
 		return nil, fmt.Errorf("server does not support range requests")
 	}
 
@@ -535,8 +533,8 @@ func parseContentDisposition(cd string) string {
 	var filename string
 	var filenameEncoded string
 
-	parts := strings.Split(cd, ";")
-	for _, part := range parts {
+	parts := strings.SplitSeq(cd, ";")
+	for part := range parts {
 		part = strings.TrimSpace(part)
 		lowerPart := strings.ToLower(part)
 
@@ -588,14 +586,14 @@ func sanitizeFilename(name string) string {
 	// Remove path separators to prevent directory traversal
 	name = strings.ReplaceAll(name, "/", "_")
 	name = strings.ReplaceAll(name, "\\", "_")
-	
+
 	// Remove null bytes
 	name = strings.ReplaceAll(name, "\x00", "")
-	
+
 	// Remove leading/trailing whitespace and dots
 	name = strings.TrimSpace(name)
 	name = strings.Trim(name, ".")
-	
+
 	// Replace other problematic characters
 	replacer := strings.NewReplacer(
 		"<", "_",
@@ -607,7 +605,7 @@ func sanitizeFilename(name string) string {
 		"*", "_",
 	)
 	name = replacer.Replace(name)
-	
+
 	// Limit length
 	if len(name) > 255 {
 		ext := filepath.Ext(name)
@@ -616,6 +614,6 @@ func sanitizeFilename(name string) string {
 		}
 		name = name[:255-len(ext)] + ext
 	}
-	
+
 	return name
 }

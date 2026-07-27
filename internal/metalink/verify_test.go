@@ -27,12 +27,9 @@ func TestPieceVerifier(t *testing.T) {
 	pieceLength := int64(25)
 	var pieceHashes []PieceHash
 
-	for i := 0; i < 4; i++ {
+	for i := range 4 {
 		start := i * int(pieceLength)
-		end := start + int(pieceLength)
-		if end > len(testData) {
-			end = len(testData)
-		}
+		end := min(start+int(pieceLength), len(testData))
 
 		h := sha256.Sum256(testData[start:end])
 		pieceHashes = append(pieceHashes, PieceHash{

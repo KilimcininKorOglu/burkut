@@ -21,9 +21,6 @@ var (
 			Foreground(lipgloss.Color("170")).
 			MarginBottom(1)
 
-	infoStyle = lipgloss.NewStyle().
-			Foreground(lipgloss.Color("241"))
-
 	successStyle = lipgloss.NewStyle().
 			Bold(true).
 			Foreground(lipgloss.Color("42"))
@@ -50,11 +47,6 @@ var (
 
 	chunkPendingStyle = lipgloss.NewStyle().
 				Foreground(lipgloss.Color("240"))
-
-	boxStyle = lipgloss.NewStyle().
-			Border(lipgloss.RoundedBorder()).
-			BorderForeground(lipgloss.Color("240")).
-			Padding(0, 1)
 )
 
 // DownloadState represents the current download state
@@ -98,12 +90,12 @@ type Model struct {
 	Connections int
 
 	// UI components
-	progress    progress.Model
-	spinner     spinner.Model
-	width       int
-	height      int
-	showChunks  bool
-	quitting    bool
+	progress   progress.Model
+	spinner    spinner.Model
+	width      int
+	height     int
+	showChunks bool
+	quitting   bool
 
 	// Callbacks
 	onPause  func()
@@ -201,12 +193,13 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, tea.Quit
 
 		case "p", " ":
-			if m.State == StateDownloading {
+			switch m.State {
+			case StateDownloading:
 				m.State = StatePaused
 				if m.onPause != nil {
 					m.onPause()
 				}
-			} else if m.State == StatePaused {
+			case StatePaused:
 				m.State = StateDownloading
 				if m.onResume != nil {
 					m.onResume()
@@ -220,10 +213,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
 		m.height = msg.Height
-		m.progress.Width = msg.Width - 10
-		if m.progress.Width > 80 {
-			m.progress.Width = 80
-		}
+		m.progress.Width = min(msg.Width-10, 80)
 
 	case spinner.TickMsg:
 		var cmd tea.Cmd
@@ -463,9 +453,10 @@ func (m Model) renderStatus() string {
 func (m Model) renderHelp() string {
 	var keys []string
 
-	if m.State == StateDownloading {
+	switch m.State {
+	case StateDownloading:
 		keys = append(keys, "p:pause")
-	} else if m.State == StatePaused {
+	case StatePaused:
 		keys = append(keys, "p:resume")
 	}
 

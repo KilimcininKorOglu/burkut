@@ -114,7 +114,7 @@ func (s *State) InitializeChunks(numChunks int) {
 	chunkSize := s.TotalSize / int64(numChunks)
 	s.Chunks = make([]Chunk, numChunks)
 
-	for i := 0; i < numChunks; i++ {
+	for i := range numChunks {
 		start := int64(i) * chunkSize
 		end := start + chunkSize - 1
 
@@ -233,12 +233,12 @@ func (s *State) Save(downloadPath string) error {
 
 	// Write to temp file first, then rename for atomicity
 	tmpPath := statePath + ".tmp"
-	if err := os.WriteFile(tmpPath, data, 0644); err != nil {
+	if err := os.WriteFile(tmpPath, data, 0644); err != nil { // #nosec G306 -- downloaded/config files are intentionally readable (0644 by design)
 		return fmt.Errorf("writing state file: %w", err)
 	}
 
 	if err := os.Rename(tmpPath, statePath); err != nil {
-		os.Remove(tmpPath) // Clean up temp file
+		_ = os.Remove(tmpPath) // Clean up temp file
 		return fmt.Errorf("renaming state file: %w", err)
 	}
 
@@ -249,7 +249,7 @@ func (s *State) Save(downloadPath string) error {
 func LoadState(downloadPath string) (*State, error) {
 	statePath := StateFilePath(downloadPath)
 
-	data, err := os.ReadFile(statePath)
+	data, err := os.ReadFile(statePath) // #nosec G304 -- path is an operator-supplied download/config/state target, not attacker-controlled input
 	if err != nil {
 		return nil, fmt.Errorf("reading state file: %w", err)
 	}
@@ -327,7 +327,7 @@ func (ss *StateStore) Clean() error {
 	for _, state := range states {
 		if state.IsComplete() {
 			downloadPath := filepath.Join(ss.baseDir, state.Filename)
-			DeleteState(downloadPath)
+			_ = DeleteState(downloadPath)
 		}
 	}
 

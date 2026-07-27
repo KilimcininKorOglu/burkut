@@ -25,19 +25,19 @@ type Client struct {
 
 // Config holds torrent client configuration
 type Config struct {
-	DownloadDir     string        // Directory for downloaded files
-	DataDir         string        // Directory for torrent data/cache
-	MaxConnections  int           // Maximum connections per torrent
-	UploadLimit     int64         // Upload speed limit (bytes/s), 0 = unlimited
-	DownloadLimit   int64         // Download speed limit (bytes/s), 0 = unlimited
-	Seed            bool          // Continue seeding after download
-	SeedRatio       float64       // Stop seeding after this ratio (0 = unlimited)
-	NoDHT           bool          // Disable DHT
-	NoPEX           bool          // Disable PEX (Peer Exchange)
-	ListenPort      int           // Port to listen on (0 = random)
-	EnableUPnP      bool          // Enable UPnP port forwarding
-	UserAgent       string        // Client user agent
-	ConnectTimeout  time.Duration // Peer connect timeout
+	DownloadDir    string        // Directory for downloaded files
+	DataDir        string        // Directory for torrent data/cache
+	MaxConnections int           // Maximum connections per torrent
+	UploadLimit    int64         // Upload speed limit (bytes/s), 0 = unlimited
+	DownloadLimit  int64         // Download speed limit (bytes/s), 0 = unlimited
+	Seed           bool          // Continue seeding after download
+	SeedRatio      float64       // Stop seeding after this ratio (0 = unlimited)
+	NoDHT          bool          // Disable DHT
+	NoPEX          bool          // Disable PEX (Peer Exchange)
+	ListenPort     int           // Port to listen on (0 = random)
+	EnableUPnP     bool          // Enable UPnP port forwarding
+	UserAgent      string        // Client user agent
+	ConnectTimeout time.Duration // Peer connect timeout
 }
 
 // DefaultConfig returns sensible default configuration
@@ -339,7 +339,7 @@ func (c *Client) Remove(d *Download, deleteFiles bool) error {
 		if info != nil {
 			for _, file := range info.Files {
 				path := filepath.Join(c.config.DownloadDir, file.DisplayPath(info))
-				os.Remove(path)
+				_ = os.Remove(path)
 			}
 		}
 	}

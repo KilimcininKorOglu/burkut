@@ -45,7 +45,7 @@ func createTestServer(t *testing.T, content []byte) *httptest.Server {
 			w.Header().Set("Content-Length", fmt.Sprintf("%d", end-start+1))
 			w.Header().Set("Accept-Ranges", "bytes")
 			w.WriteHeader(http.StatusPartialContent)
-			w.Write(content[start : end+1])
+			_, _ = w.Write(content[start : end+1])
 			return
 		}
 
@@ -53,7 +53,7 @@ func createTestServer(t *testing.T, content []byte) *httptest.Server {
 		w.Header().Set("Content-Length", fmt.Sprintf("%d", len(content)))
 		w.Header().Set("Accept-Ranges", "bytes")
 		w.WriteHeader(http.StatusOK)
-		w.Write(content)
+		_, _ = w.Write(content)
 	}))
 }
 
@@ -115,9 +115,9 @@ func TestDownloader_ParallelChunks(t *testing.T) {
 	downloader := NewDownloader(config, httpClient)
 
 	// Track progress
-	var progressCalls int32
+	var progressCalls atomic.Int32
 	downloader.SetProgressCallback(func(p Progress) {
-		atomic.AddInt32(&progressCalls, 1)
+		progressCalls.Add(1)
 	})
 
 	// Download
@@ -146,7 +146,7 @@ func TestDownloader_ParallelChunks(t *testing.T) {
 	}
 
 	// Progress callback might not be called for fast downloads - that's OK
-	t.Logf("Progress callback called %d times", atomic.LoadInt32(&progressCalls))
+	t.Logf("Progress callback called %d times", progressCalls.Load())
 }
 
 func TestDownloader_Resume(t *testing.T) {
@@ -235,7 +235,7 @@ func TestDownloader_Cancel(t *testing.T) {
 
 	// Download should fail due to timeout
 	err := downloader.Download(ctx, server.URL+"/cancel.bin", outputPath)
-	
+
 	// Either context deadline exceeded or canceled is acceptable
 	if err == nil {
 		// Download completed before timeout - that's also OK for small files

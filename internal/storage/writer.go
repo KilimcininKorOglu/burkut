@@ -12,12 +12,12 @@ import (
 // FileWriter handles writing downloaded data to disk.
 // It supports both sequential and random-access writes for chunk-based downloads.
 type FileWriter struct {
-	file     *os.File
-	path     string
-	size     int64
-	written  int64
-	mu       sync.Mutex
-	closed   bool
+	file    *os.File
+	path    string
+	size    int64
+	written int64
+	mu      sync.Mutex
+	closed  bool
 }
 
 // NewFileWriter creates a new FileWriter for the given path.
@@ -26,13 +26,13 @@ func NewFileWriter(path string, size int64) (*FileWriter, error) {
 	// Ensure directory exists
 	dir := filepath.Dir(path)
 	if dir != "" && dir != "." {
-		if err := os.MkdirAll(dir, 0755); err != nil {
+		if err := os.MkdirAll(dir, 0755); err != nil { // #nosec G301 -- output directories are intentionally traversable (0755 by design)
 			return nil, fmt.Errorf("creating directory %s: %w", dir, err)
 		}
 	}
 
 	// Open file for writing (create if not exists, truncate if exists)
-	file, err := os.OpenFile(path, os.O_CREATE|os.O_RDWR, 0644)
+	file, err := os.OpenFile(path, os.O_CREATE|os.O_RDWR, 0644) // #nosec G302 G304 -- download output files are intentionally readable (0644 by design); path is an operator-supplied download/config/state target, not attacker-controlled input
 	if err != nil {
 		return nil, fmt.Errorf("opening file %s: %w", path, err)
 	}
@@ -46,7 +46,7 @@ func NewFileWriter(path string, size int64) (*FileWriter, error) {
 	// Pre-allocate file if size is known
 	if size > 0 {
 		if err := fw.preallocate(size); err != nil {
-			file.Close()
+			_ = file.Close()
 			return nil, fmt.Errorf("preallocating file: %w", err)
 		}
 	}
@@ -57,7 +57,7 @@ func NewFileWriter(path string, size int64) (*FileWriter, error) {
 // OpenFileWriter opens an existing file for resuming a download.
 // It doesn't truncate the file.
 func OpenFileWriter(path string, size int64) (*FileWriter, error) {
-	file, err := os.OpenFile(path, os.O_RDWR, 0644)
+	file, err := os.OpenFile(path, os.O_RDWR, 0644) // #nosec G302 G304 -- download output files are intentionally readable (0644 by design); path is an operator-supplied download/config/state target, not attacker-controlled input
 	if err != nil {
 		return nil, fmt.Errorf("opening file %s: %w", path, err)
 	}
@@ -65,7 +65,7 @@ func OpenFileWriter(path string, size int64) (*FileWriter, error) {
 	// Get current file size
 	info, err := file.Stat()
 	if err != nil {
-		file.Close()
+		_ = file.Close()
 		return nil, fmt.Errorf("getting file info: %w", err)
 	}
 
@@ -229,21 +229,26 @@ func TempFile(dir, prefix string) (*os.File, error) {
 }
 
 // CopyFile copies a file from src to dst.
-func CopyFile(src, dst string) error {
-	source, err := os.Open(src)
+func CopyFile(src, dst string) (err error) {
+	source, err := os.Open(src) // #nosec G304 -- path is an operator-supplied download/config/state target, not attacker-controlled input
 	if err != nil {
 		return fmt.Errorf("opening source file: %w", err)
 	}
-	defer source.Close()
+	defer func() { _ = source.Close() }()
 
-	destination, err := os.Create(dst)
+	destination, err := os.Create(dst) // #nosec G304 -- path is an operator-supplied download/config/state target, not attacker-controlled input
 	if err != nil {
 		return fmt.Errorf("creating destination file: %w", err)
 	}
-	defer destination.Close()
+	// Capture the destination close error: a write-target close failure
+	// can indicate data was not fully flushed.
+	defer func() {
+		if closeErr := destination.Close(); closeErr != nil && err == nil {
+			err = fmt.Errorf("closing destination file: %w", closeErr)
+		}
+	}()
 
-	_, err = io.Copy(destination, source)
-	if err != nil {
+	if _, err = io.Copy(destination, source); err != nil {
 		return fmt.Errorf("copying file: %w", err)
 	}
 

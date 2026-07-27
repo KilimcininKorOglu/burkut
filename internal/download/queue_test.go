@@ -9,11 +9,11 @@ import (
 
 func TestNewQueue(t *testing.T) {
 	q := NewQueue("/tmp/downloads")
-	
+
 	if q == nil {
 		t.Fatal("NewQueue returned nil")
 	}
-	
+
 	if q.Count() != 0 {
 		t.Errorf("Count() = %d, want 0", q.Count())
 	}
@@ -21,7 +21,7 @@ func TestNewQueue(t *testing.T) {
 
 func TestQueue_Add(t *testing.T) {
 	q := NewQueue("")
-	
+
 	tests := []struct {
 		name    string
 		url     string
@@ -34,7 +34,7 @@ func TestQueue_Add(t *testing.T) {
 		{"comment", "# this is a comment", false}, // Comments are skipped, no error
 		{"invalid url", "://invalid", true},
 	}
-	
+
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			err := q.Add(tt.url)
@@ -47,17 +47,17 @@ func TestQueue_Add(t *testing.T) {
 
 func TestQueue_AddWithOptions(t *testing.T) {
 	q := NewQueue("/downloads")
-	
+
 	err := q.AddWithOptions("https://example.com/file.zip", "custom.zip", "sha256:abc123")
 	if err != nil {
 		t.Fatalf("AddWithOptions() error = %v", err)
 	}
-	
+
 	items := q.Items()
 	if len(items) != 1 {
 		t.Fatalf("Items() len = %d, want 1", len(items))
 	}
-	
+
 	item := items[0]
 	if item.URL != "https://example.com/file.zip" {
 		t.Errorf("URL = %q, want https://example.com/file.zip", item.URL)
@@ -74,7 +74,7 @@ func TestQueue_LoadFromFile(t *testing.T) {
 	// Create temp file
 	tmpDir := t.TempDir()
 	filename := filepath.Join(tmpDir, "urls.txt")
-	
+
 	content := `# Comment line
 https://example.com/file1.zip
 https://example.com/file2.zip output2.zip
@@ -83,37 +83,37 @@ https://example.com/file3.zip output3.zip sha256:abc123
 # Pipe-separated format
 https://example.com/file4.zip|output4.zip|md5:def456
 `
-	
+
 	if err := os.WriteFile(filename, []byte(content), 0644); err != nil {
 		t.Fatalf("WriteFile() error = %v", err)
 	}
-	
+
 	q := NewQueue(tmpDir)
 	if err := q.LoadFromFile(filename); err != nil {
 		t.Fatalf("LoadFromFile() error = %v", err)
 	}
-	
+
 	if q.Count() != 4 {
 		t.Errorf("Count() = %d, want 4", q.Count())
 	}
-	
+
 	items := q.Items()
-	
+
 	// Check first item (URL only)
 	if items[0].OutputPath != filepath.Join(tmpDir, "file1.zip") {
 		t.Errorf("Item[0].OutputPath = %q", items[0].OutputPath)
 	}
-	
+
 	// Check second item (URL + output)
 	if items[1].OutputPath != "output2.zip" {
 		t.Errorf("Item[1].OutputPath = %q, want output2.zip", items[1].OutputPath)
 	}
-	
+
 	// Check third item (URL + output + checksum)
 	if items[2].Checksum != "sha256:abc123" {
 		t.Errorf("Item[2].Checksum = %q, want sha256:abc123", items[2].Checksum)
 	}
-	
+
 	// Check fourth item (pipe-separated)
 	if items[3].OutputPath != "output4.zip" {
 		t.Errorf("Item[3].OutputPath = %q, want output4.zip", items[3].OutputPath)
@@ -133,10 +133,10 @@ func TestQueue_LoadFromFile_NotFound(t *testing.T) {
 
 func TestQueue_UpdateStatus(t *testing.T) {
 	q := NewQueue("")
-	q.Add("https://example.com/file.zip")
-	
+	_ = q.Add("https://example.com/file.zip")
+
 	q.UpdateStatus(0, QueueStatusDownloading)
-	
+
 	item := q.Get(0)
 	if item.Status != QueueStatusDownloading {
 		t.Errorf("Status = %v, want %v", item.Status, QueueStatusDownloading)
@@ -144,7 +144,7 @@ func TestQueue_UpdateStatus(t *testing.T) {
 	if item.StartTime.IsZero() {
 		t.Error("StartTime should be set")
 	}
-	
+
 	q.UpdateStatus(0, QueueStatusCompleted)
 	item = q.Get(0)
 	if item.Status != QueueStatusCompleted {
@@ -157,10 +157,10 @@ func TestQueue_UpdateStatus(t *testing.T) {
 
 func TestQueue_UpdateProgress(t *testing.T) {
 	q := NewQueue("")
-	q.Add("https://example.com/file.zip")
-	
+	_ = q.Add("https://example.com/file.zip")
+
 	q.UpdateProgress(0, 5000, 10000)
-	
+
 	item := q.Get(0)
 	if item.Downloaded != 5000 {
 		t.Errorf("Downloaded = %d, want 5000", item.Downloaded)
@@ -172,11 +172,11 @@ func TestQueue_UpdateProgress(t *testing.T) {
 
 func TestQueue_SetError(t *testing.T) {
 	q := NewQueue("")
-	q.Add("https://example.com/file.zip")
-	
+	_ = q.Add("https://example.com/file.zip")
+
 	testErr := os.ErrNotExist
 	q.SetError(0, testErr)
-	
+
 	item := q.Get(0)
 	if item.Status != QueueStatusFailed {
 		t.Errorf("Status = %v, want %v", item.Status, QueueStatusFailed)
@@ -188,9 +188,9 @@ func TestQueue_SetError(t *testing.T) {
 
 func TestQueue_NextPending(t *testing.T) {
 	q := NewQueue("")
-	q.Add("https://example.com/file1.zip")
-	q.Add("https://example.com/file2.zip")
-	
+	_ = q.Add("https://example.com/file1.zip")
+	_ = q.Add("https://example.com/file2.zip")
+
 	// First pending
 	item := q.NextPending()
 	if item == nil {
@@ -199,19 +199,19 @@ func TestQueue_NextPending(t *testing.T) {
 	if item.ID != 0 {
 		t.Errorf("ID = %d, want 0", item.ID)
 	}
-	
+
 	// Mark first as completed
 	q.UpdateStatus(0, QueueStatusCompleted)
-	
+
 	// Next pending should be second
 	item = q.NextPending()
 	if item.ID != 1 {
 		t.Errorf("ID = %d, want 1", item.ID)
 	}
-	
+
 	// Mark second as completed
 	q.UpdateStatus(1, QueueStatusCompleted)
-	
+
 	// No more pending
 	item = q.NextPending()
 	if item != nil {
@@ -221,18 +221,18 @@ func TestQueue_NextPending(t *testing.T) {
 
 func TestQueue_Stats(t *testing.T) {
 	q := NewQueue("")
-	q.Add("https://example.com/file1.zip")
-	q.Add("https://example.com/file2.zip")
-	q.Add("https://example.com/file3.zip")
-	
+	_ = q.Add("https://example.com/file1.zip")
+	_ = q.Add("https://example.com/file2.zip")
+	_ = q.Add("https://example.com/file3.zip")
+
 	q.UpdateStatus(0, QueueStatusCompleted)
 	q.UpdateProgress(0, 1000, 1000)
-	
+
 	q.UpdateStatus(1, QueueStatusDownloading)
 	q.UpdateProgress(1, 500, 2000)
-	
+
 	stats := q.Stats()
-	
+
 	if stats.Total != 3 {
 		t.Errorf("Total = %d, want 3", stats.Total)
 	}
@@ -252,14 +252,14 @@ func TestQueue_Stats(t *testing.T) {
 
 func TestQueue_IsComplete(t *testing.T) {
 	q := NewQueue("")
-	q.Add("https://example.com/file.zip")
-	
+	_ = q.Add("https://example.com/file.zip")
+
 	if q.IsComplete() {
 		t.Error("IsComplete() should be false with pending items")
 	}
-	
+
 	q.UpdateStatus(0, QueueStatusCompleted)
-	
+
 	if !q.IsComplete() {
 		t.Error("IsComplete() should be true when all completed")
 	}
@@ -267,15 +267,15 @@ func TestQueue_IsComplete(t *testing.T) {
 
 func TestQueue_Clear(t *testing.T) {
 	q := NewQueue("")
-	q.Add("https://example.com/file1.zip")
-	q.Add("https://example.com/file2.zip")
-	
+	_ = q.Add("https://example.com/file1.zip")
+	_ = q.Add("https://example.com/file2.zip")
+
 	if q.Count() != 2 {
 		t.Errorf("Count() = %d, want 2", q.Count())
 	}
-	
+
 	q.Clear()
-	
+
 	if q.Count() != 0 {
 		t.Errorf("Count() after Clear() = %d, want 0", q.Count())
 	}
@@ -294,7 +294,7 @@ func TestQueueStatus_String(t *testing.T) {
 		{QueueStatusCanceled, "canceled"},
 		{QueueStatus(99), "unknown"},
 	}
-	
+
 	for _, tt := range tests {
 		if tt.status.String() != tt.expected {
 			t.Errorf("%d.String() = %q, want %q", tt.status, tt.status.String(), tt.expected)
@@ -313,7 +313,7 @@ func TestExtractFilename(t *testing.T) {
 		{"https://example.com/file%20name.zip", "file name.zip"},
 		{"://invalid", "download"},
 	}
-	
+
 	for _, tt := range tests {
 		got := extractFilename(tt.url)
 		if got != tt.expected {
@@ -325,22 +325,22 @@ func TestExtractFilename(t *testing.T) {
 func TestNewQueueManager(t *testing.T) {
 	q := NewQueue("")
 	qm := NewQueueManager(context.Background(), q, 4)
-	
+
 	if qm == nil {
 		t.Fatal("NewQueueManager returned nil")
 	}
-	
+
 	if qm.Queue() != q {
 		t.Error("Queue() should return the same queue")
 	}
-	
+
 	if qm.Context() == nil {
 		t.Error("Context() should not be nil")
 	}
-	
+
 	// Test Stop
 	qm.Stop()
-	
+
 	select {
 	case <-qm.Context().Done():
 		// Expected

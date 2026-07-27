@@ -115,7 +115,7 @@ func TestLinkConverter_ConvertFile(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create temp dir: %v", err)
 	}
-	defer os.RemoveAll(tmpDir)
+	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	// Create test HTML file
 	htmlContent := `<!DOCTYPE html>
@@ -127,8 +127,8 @@ func TestLinkConverter_ConvertFile(t *testing.T) {
 </html>`
 
 	htmlPath := filepath.Join(tmpDir, "example.com", "index.html")
-	os.MkdirAll(filepath.Dir(htmlPath), 0755)
-	os.WriteFile(htmlPath, []byte(htmlContent), 0644)
+	_ = os.MkdirAll(filepath.Dir(htmlPath), 0755)
+	_ = os.WriteFile(htmlPath, []byte(htmlContent), 0644)
 
 	// Convert
 	baseURL, _ := url.Parse("https://example.com/")

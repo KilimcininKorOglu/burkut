@@ -12,12 +12,12 @@ import (
 
 // RetryConfig holds retry configuration
 type RetryConfig struct {
-	MaxRetries     int           // Maximum number of retry attempts
-	InitialDelay   time.Duration // Initial delay before first retry
-	MaxDelay       time.Duration // Maximum delay between retries
-	Multiplier     float64       // Exponential backoff multiplier
-	Jitter         float64       // Random jitter factor (0-1)
-	RetryableErrs  []error       // Specific errors to retry on
+	MaxRetries    int           // Maximum number of retry attempts
+	InitialDelay  time.Duration // Initial delay before first retry
+	MaxDelay      time.Duration // Maximum delay between retries
+	Multiplier    float64       // Exponential backoff multiplier
+	Jitter        float64       // Random jitter factor (0-1)
+	RetryableErrs []error       // Specific errors to retry on
 }
 
 // DefaultRetryConfig returns default retry configuration
@@ -140,7 +140,7 @@ func (r *Retrier) calculateDelay(attempt int) time.Duration {
 
 	// Add jitter
 	if r.config.Jitter > 0 {
-		jitter := delay * r.config.Jitter * (rand.Float64()*2 - 1) // -jitter to +jitter
+		jitter := delay * r.config.Jitter * (rand.Float64()*2 - 1) // #nosec G404 -- math/rand used for retry/backoff jitter and mirror selection; cryptographic randomness not required
 		delay += jitter
 	}
 
@@ -219,7 +219,7 @@ func WithRetry(ctx context.Context, config RetryConfig, fn func() error) error {
 // WithRetryNotify is like WithRetry but calls onRetry before each retry attempt
 func WithRetryNotify(ctx context.Context, config RetryConfig, fn func() error, onRetry func(attempt int, err error, delay time.Duration)) error {
 	retrier := NewRetrier(config)
-	
+
 	startTime := time.Now()
 	var lastErr error
 
@@ -236,7 +236,7 @@ func WithRetryNotify(ctx context.Context, config RetryConfig, fn func() error, o
 		}
 
 		delay := retrier.calculateDelay(attempt)
-		
+
 		if onRetry != nil {
 			onRetry(attempt+1, err, delay)
 		}

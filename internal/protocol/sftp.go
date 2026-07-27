@@ -5,7 +5,6 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"net"
 	"net/url"
 	"os"
 	"path"
@@ -20,12 +19,11 @@ import (
 
 // SFTPClient is an SFTP protocol adapter for downloading files
 type SFTPClient struct {
-	timeout     time.Duration
-	username    string
-	password    string
-	privateKey  string
-	knownHosts  string
-	insecure    bool // Skip host key verification
+	timeout    time.Duration
+	username   string
+	password   string
+	privateKey string
+	insecure   bool // Skip host key verification
 }
 
 // SFTPClientOption is a function that configures SFTPClient
@@ -154,7 +152,7 @@ func (c *SFTPClient) connect(ctx context.Context, rawURL string) (*ssh.Client, *
 	}
 
 	if c.insecure {
-		sshConfig.HostKeyCallback = ssh.InsecureIgnoreHostKey()
+		sshConfig.HostKeyCallback = ssh.InsecureIgnoreHostKey() // #nosec G106 -- gated behind explicit --insecure opt-in flag
 	} else {
 		fmt.Fprintf(os.Stderr, "Warning: SFTP host key verification is not implemented. Use --no-check-certificate to allow insecure connections.\n")
 		return nil, nil, "", fmt.Errorf("SFTP host key verification not available: use --no-check-certificate to allow insecure connections")
@@ -169,7 +167,7 @@ func (c *SFTPClient) connect(ctx context.Context, rawURL string) (*ssh.Client, *
 	// Create SFTP session
 	sftpClient, err := sftp.NewClient(sshConn)
 	if err != nil {
-		sshConn.Close()
+		_ = sshConn.Close()
 		return nil, nil, "", fmt.Errorf("SFTP session failed: %w", err)
 	}
 
@@ -191,7 +189,7 @@ func loadPrivateKey(keyPath string) (ssh.Signer, error) {
 	if runtime.GOOS != "windows" && info.Mode().Perm()&0077 != 0 {
 		fmt.Fprintf(os.Stderr, "Warning: private key %s has overly permissive permissions\n", keyPath)
 	}
-	key, err := os.ReadFile(keyPath)
+	key, err := os.ReadFile(keyPath) // #nosec G304 -- path is an operator-supplied download/config/state target, not attacker-controlled input
 	if err != nil {
 		return nil, err
 	}
@@ -210,8 +208,8 @@ func (c *SFTPClient) Head(ctx context.Context, rawURL string) (*Metadata, error)
 	if err != nil {
 		return nil, err
 	}
-	defer sftpClient.Close()
-	defer sshConn.Close()
+	defer func() { _ = sftpClient.Close() }()
+	defer func() { _ = sshConn.Close() }()
 
 	// Get file info
 	info, err := sftpClient.Stat(filepath)
@@ -249,16 +247,16 @@ func (c *SFTPClient) Get(ctx context.Context, rawURL string) (io.ReadCloser, *Me
 	// Get file info
 	info, err := sftpClient.Stat(filepath)
 	if err != nil {
-		sftpClient.Close()
-		sshConn.Close()
+		_ = sftpClient.Close()
+		_ = sshConn.Close()
 		return nil, nil, fmt.Errorf("getting file info: %w", err)
 	}
 
 	// Open file
 	file, err := sftpClient.Open(filepath)
 	if err != nil {
-		sftpClient.Close()
-		sshConn.Close()
+		_ = sftpClient.Close()
+		_ = sshConn.Close()
 		return nil, nil, fmt.Errorf("opening file: %w", err)
 	}
 
@@ -294,32 +292,32 @@ func (c *SFTPClient) GetRange(ctx context.Context, rawURL string, start, end int
 	// Get file info
 	info, err := sftpClient.Stat(filepath)
 	if err != nil {
-		sftpClient.Close()
-		sshConn.Close()
+		_ = sftpClient.Close()
+		_ = sshConn.Close()
 		return nil, fmt.Errorf("getting file info: %w", err)
 	}
 
 	// Validate range
 	if start >= info.Size() {
-		sftpClient.Close()
-		sshConn.Close()
+		_ = sftpClient.Close()
+		_ = sshConn.Close()
 		return nil, fmt.Errorf("start offset %d exceeds file size %d", start, info.Size())
 	}
 
 	// Open file
 	file, err := sftpClient.Open(filepath)
 	if err != nil {
-		sftpClient.Close()
-		sshConn.Close()
+		_ = sftpClient.Close()
+		_ = sshConn.Close()
 		return nil, fmt.Errorf("opening file: %w", err)
 	}
 
 	// Seek to start position
 	_, err = file.Seek(start, io.SeekStart)
 	if err != nil {
-		file.Close()
-		sftpClient.Close()
-		sshConn.Close()
+		_ = file.Close()
+		_ = sftpClient.Close()
+		_ = sshConn.Close()
 		return nil, fmt.Errorf("seeking to position: %w", err)
 	}
 
@@ -327,10 +325,10 @@ func (c *SFTPClient) GetRange(ctx context.Context, rawURL string, start, end int
 	bytesToRead := end - start + 1
 
 	return &sftpRangeReader{
-		file:        file,
-		reader:      io.LimitReader(file, bytesToRead),
-		sftpClient:  sftpClient,
-		sshConn:     sshConn,
+		file:       file,
+		reader:     io.LimitReader(file, bytesToRead),
+		sftpClient: sftpClient,
+		sshConn:    sshConn,
 	}, nil
 }
 
@@ -346,9 +344,9 @@ func (s *sftpReadCloser) Read(p []byte) (int, error) {
 }
 
 func (s *sftpReadCloser) Close() error {
-	s.file.Close()
-	s.sftpClient.Close()
-	s.sshConn.Close()
+	_ = s.file.Close()
+	_ = s.sftpClient.Close()
+	_ = s.sshConn.Close()
 	return nil
 }
 
@@ -365,17 +363,8 @@ func (s *sftpRangeReader) Read(p []byte) (int, error) {
 }
 
 func (s *sftpRangeReader) Close() error {
-	s.file.Close()
-	s.sftpClient.Close()
-	s.sshConn.Close()
+	_ = s.file.Close()
+	_ = s.sftpClient.Close()
+	_ = s.sshConn.Close()
 	return nil
-}
-
-// checkHostKey returns a callback that verifies the host key
-// TODO: Implement proper known_hosts checking
-func checkHostKey(knownHostsFile string) ssh.HostKeyCallback {
-	return func(hostname string, remote net.Addr, key ssh.PublicKey) error {
-		// For now, just accept all keys
-		return nil
-	}
 }

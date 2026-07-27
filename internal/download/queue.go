@@ -15,17 +15,17 @@ import (
 
 // QueueItem represents a single download in the queue
 type QueueItem struct {
-	ID          int
-	URL         string
-	OutputPath  string
-	Checksum    string // Optional checksum for verification
-	Status      QueueStatus
-	Error       error
-	StartTime   time.Time
-	EndTime     time.Time
-	Downloaded  int64
-	TotalSize   int64
-	Retries     int
+	ID         int
+	URL        string
+	OutputPath string
+	Checksum   string // Optional checksum for verification
+	Status     QueueStatus
+	Error      error
+	StartTime  time.Time
+	EndTime    time.Time
+	Downloaded int64
+	TotalSize  int64
+	Retries    int
 }
 
 // QueueStatus represents the status of a queue item
@@ -73,9 +73,9 @@ type QueueStats struct {
 
 // Queue manages a list of downloads
 type Queue struct {
-	items      []*QueueItem
-	outputDir  string
-	mu         sync.RWMutex
+	items     []*QueueItem
+	outputDir string
+	mu        sync.RWMutex
 }
 
 // NewQueue creates a new download queue
@@ -138,11 +138,11 @@ func (q *Queue) AddWithOptions(rawURL, outputPath, checksum string) error {
 
 // LoadFromFile loads URLs from a file (one URL per line)
 func (q *Queue) LoadFromFile(filename string) error {
-	file, err := os.Open(filename)
+	file, err := os.Open(filename) // #nosec G304 -- path is an operator-supplied download/config/state target, not attacker-controlled input
 	if err != nil {
 		return fmt.Errorf("opening file: %w", err)
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 
 	scanner := bufio.NewScanner(file)
 	lineNum := 0
@@ -162,7 +162,7 @@ func (q *Queue) LoadFromFile(filename string) error {
 		// - URL OUTPUT
 		// - URL OUTPUT CHECKSUM
 		// - URL|OUTPUT|CHECKSUM (pipe separated)
-		
+
 		var rawURL, outputPath, checksum string
 
 		if strings.Contains(line, "|") {
@@ -227,9 +227,10 @@ func (q *Queue) UpdateStatus(id int, status QueueStatus) {
 
 	if id >= 0 && id < len(q.items) {
 		q.items[id].Status = status
-		if status == QueueStatusDownloading {
+		switch status {
+		case QueueStatusDownloading:
 			q.items[id].StartTime = time.Now()
-		} else if status == QueueStatusCompleted || status == QueueStatusFailed {
+		case QueueStatusCompleted, QueueStatusFailed:
 			q.items[id].EndTime = time.Now()
 		}
 	}

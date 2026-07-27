@@ -11,6 +11,7 @@ import (
 	"os"
 	"os/exec"
 	"runtime"
+	"slices"
 	"strings"
 	"time"
 )
@@ -85,9 +86,9 @@ func (h *CommandHook) Execute(ctx context.Context, payload *Payload) error {
 	// Determine shell based on OS
 	var cmd *exec.Cmd
 	if isWindows() {
-		cmd = exec.CommandContext(ctx, "cmd", "/C", h.Command)
+		cmd = exec.CommandContext(ctx, "cmd", "/C", h.Command) // #nosec G204 -- hook command is an opt-in operator-configured feature, not external input
 	} else {
-		cmd = exec.CommandContext(ctx, "sh", "-c", h.Command)
+		cmd = exec.CommandContext(ctx, "sh", "-c", h.Command) // #nosec G204 -- hook command is an opt-in operator-configured feature, not external input
 	}
 
 	// Set environment variables
@@ -107,12 +108,7 @@ func (h *CommandHook) Execute(ctx context.Context, payload *Payload) error {
 }
 
 func (h *CommandHook) shouldHandle(event Event) bool {
-	for _, e := range h.Events {
-		if e == event {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(h.Events, event)
 }
 
 // sanitizeEnvValue escapes shell metacharacters in environment variable values
@@ -221,7 +217,7 @@ func (h *WebhookHook) Execute(ctx context.Context, payload *Payload) error {
 	if err != nil {
 		return fmt.Errorf("sending webhook: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	// Check response
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
@@ -232,12 +228,7 @@ func (h *WebhookHook) Execute(ctx context.Context, payload *Payload) error {
 }
 
 func (h *WebhookHook) shouldHandle(event Event) bool {
-	for _, e := range h.Events {
-		if e == event {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(h.Events, event)
 }
 
 // Manager manages multiple hooks

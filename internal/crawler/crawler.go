@@ -75,16 +75,16 @@ func DefaultConfig() *Config {
 
 // Stats holds crawl statistics
 type Stats struct {
-	StartTime       time.Time
-	EndTime         time.Time
-	TotalURLs       int
-	DownloadedURLs  int
-	SkippedURLs     int
-	FailedURLs      int
-	TotalBytes      int64
-	CurrentURL      string
-	CurrentDepth    int
-	mu              sync.RWMutex
+	StartTime      time.Time
+	EndTime        time.Time
+	TotalURLs      int
+	DownloadedURLs int
+	SkippedURLs    int
+	FailedURLs     int
+	TotalBytes     int64
+	CurrentURL     string
+	CurrentDepth   int
+	mu             sync.RWMutex
 }
 
 // Crawler handles recursive website downloading
@@ -166,7 +166,7 @@ func (c *Crawler) Crawl(ctx context.Context, startURL string) error {
 	}
 
 	// Create output directory
-	if err := os.MkdirAll(c.config.OutputDir, 0755); err != nil {
+	if err := os.MkdirAll(c.config.OutputDir, 0755); err != nil { // #nosec G301 -- output directories are intentionally traversable (0755 by design)
 		return fmt.Errorf("creating output directory: %w", err)
 	}
 
@@ -228,7 +228,9 @@ func (c *Crawler) Crawl(ctx context.Context, startURL string) error {
 
 	// Convert links if enabled
 	if c.config.ConvertLinks {
-		ConvertAllFiles(c.queue, c.config.OutputDir, c.baseURL)
+		if err := ConvertAllFiles(c.queue, c.config.OutputDir, c.baseURL); err != nil {
+			return fmt.Errorf("converting links: %w", err)
+		}
 	}
 
 	return nil
@@ -329,7 +331,7 @@ func (c *Crawler) download(ctx context.Context, item *CrawlItem) (string, string
 	if err != nil {
 		return "", "", nil, err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		return "", "", nil, fmt.Errorf("HTTP %d: %s", resp.StatusCode, resp.Status)
@@ -364,12 +366,12 @@ func (c *Crawler) download(ctx context.Context, item *CrawlItem) (string, string
 
 		// Create directory
 		dir := filepath.Dir(localPath)
-		if err := os.MkdirAll(dir, 0755); err != nil {
+		if err := os.MkdirAll(dir, 0755); err != nil { // #nosec G301 -- output directories are intentionally traversable (0755 by design)
 			return "", "", nil, err
 		}
 
 		// Write file
-		if err := os.WriteFile(localPath, body, 0644); err != nil {
+		if err := os.WriteFile(localPath, body, 0644); err != nil { // #nosec G306 -- downloaded/config files are intentionally readable (0644 by design)
 			return "", "", nil, err
 		}
 
@@ -471,7 +473,7 @@ func (c *Crawler) urlToLocalPath(u *url.URL) string {
 func hashString(s string) string {
 	h := uint64(0)
 	for _, c := range s {
-		h = h*31 + uint64(c)
+		h = h*31 + uint64(c) // #nosec G115 -- false positive: runes from string range are always non-negative; hash arithmetic is intentional
 	}
 	return fmt.Sprintf("%016x", h)
 }
@@ -480,7 +482,7 @@ func hashString(s string) string {
 func (c *Crawler) wait(ctx context.Context) {
 	wait := c.config.WaitTime
 	if c.config.RandomWait > 0 {
-		wait += time.Duration(rand.Int63n(int64(c.config.RandomWait)))
+		wait += time.Duration(rand.Int63n(int64(c.config.RandomWait))) // #nosec G404 -- math/rand used for retry/backoff jitter and mirror selection; cryptographic randomness not required
 	}
 
 	select {

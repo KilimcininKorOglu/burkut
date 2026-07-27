@@ -283,7 +283,7 @@ func TestState_SaveLoad_AtomicWrite(t *testing.T) {
 	state.InitializeChunks(1)
 
 	// Save multiple times to test atomic write
-	for i := 0; i < 10; i++ {
+	for i := range 10 {
 		state.UpdateChunk(0, int64(i*100), ChunkStatusInProgress)
 		if err := state.Save(downloadPath); err != nil {
 			t.Fatalf("Save() iteration %d error = %v", i, err)
@@ -306,7 +306,7 @@ func TestStateExists(t *testing.T) {
 	}
 
 	state := NewState("http://example.com/file.zip", "file.zip", 1000, true)
-	state.Save(downloadPath)
+	_ = state.Save(downloadPath)
 
 	if !StateExists(downloadPath) {
 		t.Error("StateExists() should be true after save")
@@ -318,7 +318,7 @@ func TestDeleteState(t *testing.T) {
 	downloadPath := filepath.Join(tmpDir, "file.zip")
 
 	state := NewState("http://example.com/file.zip", "file.zip", 1000, true)
-	state.Save(downloadPath)
+	_ = state.Save(downloadPath)
 
 	if err := DeleteState(downloadPath); err != nil {
 		t.Fatalf("DeleteState() error = %v", err)
@@ -339,9 +339,9 @@ func TestStateStore_List(t *testing.T) {
 	store := NewStateStore(tmpDir)
 
 	// Create some state files
-	for i := 0; i < 3; i++ {
+	for i := range 3 {
 		state := NewState("http://example.com/file.zip", "file.zip", 1000, true)
-		state.Save(filepath.Join(tmpDir, "file"+string(rune('A'+i))+".zip"))
+		_ = state.Save(filepath.Join(tmpDir, "file"+string(rune('A'+i))+".zip"))
 	}
 
 	states, err := store.List()
@@ -363,13 +363,13 @@ func TestStateStore_Clean(t *testing.T) {
 	completeState := NewState("http://example.com/complete.zip", "complete.zip", 100, true)
 	completeState.InitializeChunks(1)
 	completeState.UpdateChunk(0, 100, ChunkStatusCompleted)
-	completeState.Save(completePath)
+	_ = completeState.Save(completePath)
 
 	incompletePath := filepath.Join(tmpDir, "incomplete.zip")
 	incompleteState := NewState("http://example.com/incomplete.zip", "incomplete.zip", 100, true)
 	incompleteState.InitializeChunks(1)
 	incompleteState.UpdateChunk(0, 50, ChunkStatusInProgress)
-	incompleteState.Save(incompletePath)
+	_ = incompleteState.Save(incompletePath)
 
 	if err := store.Clean(); err != nil {
 		t.Fatalf("Clean() error = %v", err)

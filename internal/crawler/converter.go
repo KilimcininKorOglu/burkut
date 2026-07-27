@@ -26,7 +26,7 @@ func NewLinkConverter(baseURL *url.URL, outputDir string) *LinkConverter {
 // ConvertFile converts links in a file to local paths
 func (c *LinkConverter) ConvertFile(filePath string) error {
 	// Read file
-	content, err := os.ReadFile(filePath)
+	content, err := os.ReadFile(filePath) // #nosec G304 -- path is an operator-supplied download/config/state target, not attacker-controlled input
 	if err != nil {
 		return err
 	}
@@ -45,7 +45,7 @@ func (c *LinkConverter) ConvertFile(filePath string) error {
 	}
 
 	// Write converted content
-	return os.WriteFile(filePath, converted, 0644)
+	return os.WriteFile(filePath, converted, 0644) // #nosec G306 G703 -- downloaded/config files are intentionally readable (0644 by design); output path derives from the operator-specified output directory
 }
 
 // convertHTML converts links in HTML content

@@ -46,11 +46,11 @@ func NetrcPath() string {
 
 // ParseNetrc parses a netrc file from the given path
 func ParseNetrc(path string) (*Netrc, error) {
-	file, err := os.Open(path)
+	file, err := os.Open(path) // #nosec G304 -- path is an operator-supplied download/config/state target, not attacker-controlled input
 	if err != nil {
 		return nil, fmt.Errorf("opening netrc file: %w", err)
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 
 	netrc := &Netrc{
 		entries: make(map[string]*NetrcEntry),
@@ -228,11 +228,11 @@ func (n *Netrc) String() string {
 	sb.WriteString("Netrc{\n")
 
 	for host, entry := range n.entries {
-		sb.WriteString(fmt.Sprintf("  machine %s login %s password ***\n", host, entry.Login))
+		fmt.Fprintf(&sb, "  machine %s login %s password ***\n", host, entry.Login)
 	}
 
 	if n.Default != nil {
-		sb.WriteString(fmt.Sprintf("  default login %s password ***\n", n.Default.Login))
+		fmt.Fprintf(&sb, "  default login %s password ***\n", n.Default.Login)
 	}
 
 	sb.WriteString("}")

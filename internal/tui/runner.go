@@ -62,7 +62,7 @@ func (r *Runner) StartAsync() {
 				fmt.Fprintf(os.Stderr, "TUI panic: %v\n", p)
 			}
 		}()
-		r.program.Run()
+		_, _ = r.program.Run()
 	}()
 }
 

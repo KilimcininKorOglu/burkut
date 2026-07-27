@@ -264,11 +264,11 @@ func TestChecksumWriter_Reset(t *testing.T) {
 		t.Fatalf("NewChecksumWriter() error = %v", err)
 	}
 
-	cw.Write([]byte("first content"))
+	_, _ = cw.Write([]byte("first content"))
 	cs1 := cw.Checksum()
 
 	cw.Reset()
-	cw.Write([]byte("second content"))
+	_, _ = cw.Write([]byte("second content"))
 	cs2 := cw.Checksum()
 
 	if cs1.Value == cs2.Value {
@@ -359,11 +359,11 @@ func TestParseChecksumFile(t *testing.T) {
 	tmpDir := t.TempDir()
 
 	tests := []struct {
-		name     string
-		content  string
-		target   string
-		want     string
-		wantErr  bool
+		name    string
+		content string
+		target  string
+		want    string
+		wantErr bool
 	}{
 		{
 			name:    "gnu coreutils format",

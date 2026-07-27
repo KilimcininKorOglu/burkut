@@ -2,8 +2,8 @@
 package metalink
 
 import (
-	"crypto/md5"
-	"crypto/sha1"
+	"crypto/md5"  // #nosec G501 -- MD5 supported only for server-published checksum verification, not security
+	"crypto/sha1" // #nosec G505 -- SHA1 supported only for server-published checksum verification, not security
 	"crypto/sha256"
 	"crypto/sha512"
 	"encoding/hex"
@@ -16,23 +16,23 @@ import (
 
 // PieceVerificationResult holds the result of piece verification
 type PieceVerificationResult struct {
-	PieceIndex   int
-	Start        int64
-	End          int64
-	Expected     string
-	Actual       string
-	Valid        bool
-	Error        error
+	PieceIndex int
+	Start      int64
+	End        int64
+	Expected   string
+	Actual     string
+	Valid      bool
+	Error      error
 }
 
 // VerifyFilePieces verifies all pieces of a file against metalink piece hashes
 // Returns a slice of results for each piece and an overall success boolean
 func (pv *PieceVerifier) VerifyFilePieces(filepath string) ([]PieceVerificationResult, bool, error) {
-	file, err := os.Open(filepath)
+	file, err := os.Open(filepath) // #nosec G304 -- path is an operator-supplied download/config/state target, not attacker-controlled input
 	if err != nil {
 		return nil, false, fmt.Errorf("opening file: %w", err)
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 
 	// Get file info for size check
 	info, err := file.Stat()
@@ -48,7 +48,7 @@ func (pv *PieceVerifier) VerifyFilePieces(filepath string) ([]PieceVerificationR
 	results := make([]PieceVerificationResult, pieceCount)
 	allValid := true
 
-	for i := 0; i < pieceCount; i++ {
+	for i := range pieceCount {
 		start, end := pv.GetPieceRange(i)
 		pieceSize := end - start + 1
 
@@ -118,11 +118,11 @@ func (pv *PieceVerifier) VerifyPiece(filepath string, pieceIndex int) (*PieceVer
 	start, end := pv.GetPieceRange(pieceIndex)
 	pieceSize := end - start + 1
 
-	file, err := os.Open(filepath)
+	file, err := os.Open(filepath) // #nosec G304 -- path is an operator-supplied download/config/state target, not attacker-controlled input
 	if err != nil {
 		return nil, fmt.Errorf("opening file: %w", err)
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 
 	// Seek to piece start
 	if _, err := file.Seek(start, io.SeekStart); err != nil {
@@ -181,9 +181,9 @@ func calculateHash(hashType string, data []byte) (string, error) {
 
 	switch normalizedType {
 	case "md5":
-		h = md5.New()
+		h = md5.New() // #nosec G401 -- MD5/SHA1 computed only to verify server-published checksums, not for security
 	case "sha1":
-		h = sha1.New()
+		h = sha1.New() // #nosec G401 -- MD5/SHA1 computed only to verify server-published checksums, not for security
 	case "sha256":
 		h = sha256.New()
 	case "sha384":

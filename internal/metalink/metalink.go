@@ -22,24 +22,24 @@ type Metalink struct {
 
 // File represents a file entry in Metalink 4 format
 type File struct {
-	Name        string   `xml:"name,attr"`
-	Size        int64    `xml:"size"`
-	Description string   `xml:"description,omitempty"`
+	Name        string     `xml:"name,attr"`
+	Size        int64      `xml:"size"`
+	Description string     `xml:"description,omitempty"`
 	Publisher   *Publisher `xml:"publisher,omitempty"`
-	Hashes      []Hash   `xml:"hash"`
-	Pieces      *Pieces  `xml:"pieces,omitempty"`
-	URLs        []URL    `xml:"url"`
-	MetaURLs    []MetaURL `xml:"metaurl,omitempty"`
+	Hashes      []Hash     `xml:"hash"`
+	Pieces      *Pieces    `xml:"pieces,omitempty"`
+	URLs        []URL      `xml:"url"`
+	MetaURLs    []MetaURL  `xml:"metaurl,omitempty"`
 }
 
 // FileV3 represents a file entry in Metalink 3 format
 type FileV3 struct {
-	Name        string   `xml:"name,attr"`
-	Size        int64    `xml:"size"`
-	Description string   `xml:"description,omitempty"`
-	Publisher   *PublisherV3 `xml:"publisher,omitempty"`
+	Name         string          `xml:"name,attr"`
+	Size         int64           `xml:"size"`
+	Description  string          `xml:"description,omitempty"`
+	Publisher    *PublisherV3    `xml:"publisher,omitempty"`
 	Verification *VerificationV3 `xml:"verification,omitempty"`
-	Resources   []ResourceV3 `xml:"resources>url"`
+	Resources    []ResourceV3    `xml:"resources>url"`
 }
 
 // Publisher represents file publisher info
@@ -62,7 +62,7 @@ type Hash struct {
 
 // VerificationV3 represents verification info in Metalink 3
 type VerificationV3 struct {
-	Hashes []HashV3 `xml:"hash"`
+	Hashes []HashV3  `xml:"hash"`
 	Pieces *PiecesV3 `xml:"pieces,omitempty"`
 }
 
@@ -74,15 +74,15 @@ type HashV3 struct {
 
 // Pieces represents piece hashes for segmented download verification
 type Pieces struct {
-	Type   string  `xml:"type,attr"`
-	Length int64   `xml:"length,attr"`
+	Type   string      `xml:"type,attr"`
+	Length int64       `xml:"length,attr"`
 	Hashes []PieceHash `xml:"hash"`
 }
 
 // PiecesV3 represents pieces in Metalink 3 format
 type PiecesV3 struct {
-	Type   string  `xml:"type,attr"`
-	Length int64   `xml:"length,attr"`
+	Type   string        `xml:"type,attr"`
+	Length int64         `xml:"length,attr"`
 	Hashes []PieceHashV3 `xml:"hash"`
 }
 
@@ -123,11 +123,11 @@ type ResourceV3 struct {
 
 // ParseFile parses a Metalink file from disk
 func ParseFile(filename string) (*Metalink, error) {
-	f, err := os.Open(filename)
+	f, err := os.Open(filename) // #nosec G304 -- path is an operator-supplied download/config/state target, not attacker-controlled input
 	if err != nil {
 		return nil, fmt.Errorf("opening metalink file: %w", err)
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	return Parse(f)
 }
@@ -169,10 +169,7 @@ func convertV3ToV4(filesV3 []FileV3) []File {
 		// Convert hashes
 		if f3.Verification != nil {
 			for _, h := range f3.Verification.Hashes {
-				file.Hashes = append(file.Hashes, Hash{
-					Type:  h.Type,
-					Value: h.Value,
-				})
+				file.Hashes = append(file.Hashes, Hash(h))
 			}
 
 			// Convert pieces
@@ -182,10 +179,7 @@ func convertV3ToV4(filesV3 []FileV3) []File {
 					Length: f3.Verification.Pieces.Length,
 				}
 				for _, ph := range f3.Verification.Pieces.Hashes {
-					file.Pieces.Hashes = append(file.Pieces.Hashes, PieceHash{
-						Piece: ph.Piece,
-						Value: ph.Value,
-					})
+					file.Pieces.Hashes = append(file.Pieces.Hashes, PieceHash(ph))
 				}
 			}
 		}
@@ -193,10 +187,7 @@ func convertV3ToV4(filesV3 []FileV3) []File {
 		// Convert resources to URLs
 		for _, res := range f3.Resources {
 			// Convert preference (1-100, higher is better) to priority (1-999, lower is better)
-			priority := 100 - res.Preference + 1
-			if priority < 1 {
-				priority = 1
-			}
+			priority := max(100-res.Preference+1, 1)
 			file.URLs = append(file.URLs, URL{
 				Priority: priority,
 				Location: res.Location,

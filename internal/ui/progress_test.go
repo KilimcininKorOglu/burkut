@@ -289,5 +289,3 @@ func TestProgressBar_formatSpeed(t *testing.T) {
 		})
 	}
 }
-
-

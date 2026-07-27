@@ -32,15 +32,15 @@ import (
 
 // Exit codes
 const (
-	ExitSuccess        = 0
-	ExitGeneralError   = 1
-	ExitParseError     = 2
-	ExitNetworkError   = 3
-	ExitAuthError      = 4
-	ExitTLSError       = 5
-	ExitChecksumError  = 6
-	ExitTimeoutError   = 7
-	ExitInterrupted    = 8
+	ExitSuccess       = 0
+	ExitGeneralError  = 1
+	ExitParseError    = 2
+	ExitNetworkError  = 3
+	ExitAuthError     = 4
+	ExitTLSError      = 5
+	ExitChecksumError = 6
+	ExitTimeoutError  = 7
+	ExitInterrupted   = 8
 )
 
 // headerList is a custom flag type for multiple headers
@@ -69,50 +69,50 @@ type CLIConfig struct {
 	ShowVersion bool
 	ShowHelp    bool
 	// Phase 2 features
-	LimitRate    string // e.g., "10M", "500K"
-	Checksum     string // e.g., "sha256:abc123..."
-	AutoVerify   bool   // Auto-detect and verify checksum from .sha256 files
-	ConfigFile   string // custom config file path
-	Profile      string // named profile to use
-	InitConfig   bool   // generate default config
-	Proxy        string // HTTP/HTTPS proxy URL
-	NoCheckCert  bool   // Skip TLS certificate verification
+	LimitRate   string // e.g., "10M", "500K"
+	Checksum    string // e.g., "sha256:abc123..."
+	AutoVerify  bool   // Auto-detect and verify checksum from .sha256 files
+	ConfigFile  string // custom config file path
+	Profile     string // named profile to use
+	InitConfig  bool   // generate default config
+	Proxy       string // HTTP/HTTPS proxy URL
+	NoCheckCert bool   // Skip TLS certificate verification
 	// Phase 1.0 features
-	InputFile     string // File containing URLs to download
-	OnComplete    string // Command to run on completion
-	OnError       string // Command to run on error
-	WebhookURL    string // Webhook URL for notifications
-	MirrorURLs    string // Comma-separated mirror URLs
-	UseHTTP3      bool   // Use HTTP/3 (QUIC) protocol
-	ForceHTTP1    bool   // Force HTTP/1.1 (disable HTTP/2)
-	ForceHTTP2    bool   // Force HTTP/2 (fail if not supported)
+	InputFile  string // File containing URLs to download
+	OnComplete string // Command to run on completion
+	OnError    string // Command to run on error
+	WebhookURL string // Webhook URL for notifications
+	MirrorURLs string // Comma-separated mirror URLs
+	UseHTTP3   bool   // Use HTTP/3 (QUIC) protocol
+	ForceHTTP1 bool   // Force HTTP/1.1 (disable HTTP/2)
+	ForceHTTP2 bool   // Force HTTP/2 (fail if not supported)
 	// Conditional download
 	Timestamping bool // Only download if remote is newer
 	// Security
 	PinnedPubKey string // SHA256 public key pin for certificate pinning
 	// Authentication
-	UseNetrc    bool       // Use .netrc for authentication
-	Headers     headerList // Custom headers
-	BasicAuth   string     // Basic auth (user:password)
+	UseNetrc  bool       // Use .netrc for authentication
+	Headers   headerList // Custom headers
+	BasicAuth string     // Basic auth (user:password)
 	// TUI
 	UseTUI bool // Use interactive TUI mode
 	// Recursive download (spider mode)
-	Recursive       bool   // Enable recursive download
-	MaxDepth        int    // Maximum recursion depth (0 = start URL only)
-	SpanHosts       bool   // Follow links to other hosts
-	AcceptPatterns  string // Accept patterns (comma-separated)
-	RejectPatterns  string // Reject patterns (comma-separated)
-	AcceptExt       string // Accept extensions (comma-separated)
-	RejectExt       string // Reject extensions (comma-separated)
-	WaitTime        string // Wait time between requests (e.g., "1s")
-	RandomWait      bool   // Add random 0-500ms to wait time
-	RobotsOff       bool   // Ignore robots.txt
-	PageRequisites  bool   // Download page requisites (CSS, JS, images)
-	ConvertLinks    bool   // Convert links to local paths
-	MirrorMode      bool   // Mirror mode (-m = -r -N -l inf)
-	SpiderMode      bool   // Spider mode (list URLs only, no download)
+	Recursive      bool   // Enable recursive download
+	MaxDepth       int    // Maximum recursion depth (0 = start URL only)
+	SpanHosts      bool   // Follow links to other hosts
+	AcceptPatterns string // Accept patterns (comma-separated)
+	RejectPatterns string // Reject patterns (comma-separated)
+	AcceptExt      string // Accept extensions (comma-separated)
+	RejectExt      string // Reject extensions (comma-separated)
+	WaitTime       string // Wait time between requests (e.g., "1s")
+	RandomWait     bool   // Add random 0-500ms to wait time
+	RobotsOff      bool   // Ignore robots.txt
+	PageRequisites bool   // Download page requisites (CSS, JS, images)
+	ConvertLinks   bool   // Convert links to local paths
+	MirrorMode     bool   // Mirror mode (-m = -r -N -l inf)
+	SpiderMode     bool   // Spider mode (list URLs only, no download)
 	// Metrics
-	MetricsAddr     string // Prometheus metrics endpoint address (e.g., ":9090")
+	MetricsAddr string // Prometheus metrics endpoint address (e.g., ":9090")
 }
 
 func main() {
@@ -139,7 +139,7 @@ func main() {
 			fmt.Fprintf(os.Stderr, "Warning: Failed to start metrics server: %v\n", err)
 		} else {
 			fmt.Fprintf(os.Stderr, "Metrics server listening on %s\n", cliConfig.MetricsAddr)
-			defer metricsServer.Stop()
+			defer func() { _ = metricsServer.Stop() }()
 		}
 	}
 
@@ -386,7 +386,6 @@ func runDownload(cliCfg CLIConfig, url string) int {
 		}
 	}
 
-
 	// Build HTTP client options
 	httpOpts := []protocol.HTTPClientOption{
 		protocol.WithTimeout(cliCfg.Timeout),
@@ -501,7 +500,7 @@ func runDownload(cliCfg CLIConfig, url string) int {
 			protocol.WithHTTP3Timeout(cliCfg.Timeout),
 			protocol.WithHTTP3UserAgent(fmt.Sprintf("Burkut/%s", version.Version)),
 		)
-		defer http3Client.Close()
+		defer func() { _ = http3Client.Close() }()
 	}
 
 	// Get file info first
@@ -597,7 +596,7 @@ func runDownload(cliCfg CLIConfig, url string) int {
 	// Parse mirror URLs if provided
 	var mirrors []string
 	if cliCfg.MirrorURLs != "" {
-		for _, m := range strings.Split(cliCfg.MirrorURLs, ",") {
+		for m := range strings.SplitSeq(cliCfg.MirrorURLs, ",") {
 			m = strings.TrimSpace(m)
 			if m != "" {
 				mirrors = append(mirrors, m)
@@ -684,7 +683,7 @@ func runDownload(cliCfg CLIConfig, url string) int {
 				if fetchErr != nil {
 					return nil, fetchErr
 				}
-				defer resp.Close()
+				defer func() { _ = resp.Close() }()
 				return io.ReadAll(resp)
 			})
 
@@ -1173,7 +1172,7 @@ func runTorrentDownload(cliCfg CLIConfig, source string) int {
 		fmt.Fprintf(os.Stderr, "Error creating torrent client: %v\n", err)
 		return ExitGeneralError
 	}
-	defer client.Close()
+	defer func() { _ = client.Close() }()
 
 	// Add torrent
 	var dl *btorrent.Download
@@ -1769,14 +1768,6 @@ func runMetalinkDownload(cliCfg CLIConfig, metalinkFile string) int {
 	return ExitNetworkError
 }
 
-// min returns the minimum of two integers
-func min(a, b int) int {
-	if a < b {
-		return a
-	}
-	return b
-}
-
 // isFTPURL checks if URL is FTP or FTPS
 func isFTPURL(rawURL string) bool {
 	u, err := url.Parse(rawURL)
@@ -1881,15 +1872,15 @@ func runFTPDownload(cliCfg CLIConfig, rawURL string) int {
 		fmt.Fprintf(os.Stderr, "Error: Failed to download: %v\n", err)
 		return ExitNetworkError
 	}
-	defer reader.Close()
+	defer func() { _ = reader.Close() }()
 
 	// Create output file
-	outFile, err := os.Create(outputPath)
+	outFile, err := os.Create(outputPath) // #nosec G304 -- path is an operator-supplied download/config/state target, not attacker-controlled input
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: Failed to create file: %v\n", err)
 		return ExitGeneralError
 	}
-	defer outFile.Close()
+	defer func() { _ = outFile.Close() }()
 
 	// Copy with progress
 	startTime := time.Now()

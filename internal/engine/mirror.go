@@ -36,10 +36,10 @@ type Mirror struct {
 
 // MirrorList manages a list of mirrors for a download
 type MirrorList struct {
-	mirrors   []*Mirror
-	strategy  MirrorStrategy
-	current   int // For round-robin
-	mu        sync.RWMutex
+	mirrors  []*Mirror
+	strategy MirrorStrategy
+	current  int // For round-robin
+	mu       sync.RWMutex
 }
 
 // NewMirrorList creates a new mirror list
@@ -111,7 +111,7 @@ func (ml *MirrorList) Next() *Mirror {
 
 	switch ml.strategy {
 	case MirrorStrategyRandom:
-		return healthy[rand.Intn(len(healthy))]
+		return healthy[rand.Intn(len(healthy))] // #nosec G404 -- math/rand used for retry/backoff jitter and mirror selection; cryptographic randomness not required
 
 	case MirrorStrategyFastest:
 		return ml.selectFastest(healthy)

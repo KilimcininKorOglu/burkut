@@ -185,7 +185,7 @@ func TestRetrier_calculateDelay(t *testing.T) {
 		{2, 4 * time.Second},
 		{3, 8 * time.Second},
 		{4, 16 * time.Second},
-		{5, 30 * time.Second}, // Capped at max
+		{5, 30 * time.Second},  // Capped at max
 		{10, 30 * time.Second}, // Still capped
 	}
 
@@ -209,7 +209,7 @@ func TestRetrier_calculateDelay_WithJitter(t *testing.T) {
 
 	// With jitter, delays should vary
 	delays := make(map[time.Duration]bool)
-	for i := 0; i < 10; i++ {
+	for range 10 {
 		delay := retrier.calculateDelay(0)
 		delays[delay] = true
 	}

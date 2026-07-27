@@ -89,7 +89,7 @@ func (c *HTTP3Client) Head(ctx context.Context, rawURL string) (*Metadata, error
 	if err != nil {
 		return nil, fmt.Errorf("executing HEAD request: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("HEAD request failed: %s", resp.Status)
@@ -113,13 +113,13 @@ func (c *HTTP3Client) Get(ctx context.Context, rawURL string) (io.ReadCloser, *M
 	}
 
 	if resp.StatusCode != http.StatusOK {
-		resp.Body.Close()
+		_ = resp.Body.Close()
 		return nil, nil, fmt.Errorf("GET request failed: %s", resp.Status)
 	}
 
 	meta, err := parseHTTP3Metadata(rawURL, resp)
 	if err != nil {
-		resp.Body.Close()
+		_ = resp.Body.Close()
 		return nil, nil, err
 	}
 
@@ -142,12 +142,12 @@ func (c *HTTP3Client) GetRange(ctx context.Context, rawURL string, start, end in
 	}
 
 	if resp.StatusCode != http.StatusPartialContent && resp.StatusCode != http.StatusOK {
-		resp.Body.Close()
+		_ = resp.Body.Close()
 		return nil, fmt.Errorf("range GET request failed: %s", resp.Status)
 	}
 
 	if resp.StatusCode == http.StatusOK {
-		resp.Body.Close()
+		_ = resp.Body.Close()
 		return nil, fmt.Errorf("server does not support range requests")
 	}
 
@@ -168,9 +168,9 @@ func (c *HTTP3Client) setHeaders(req *http.Request) {
 // parseHTTP3Metadata extracts metadata from response
 func parseHTTP3Metadata(rawURL string, resp *http.Response) (*Metadata, error) {
 	meta := &Metadata{
-		URL:         rawURL,
-		ContentType: resp.Header.Get("Content-Type"),
-		ETag:        resp.Header.Get("ETag"),
+		URL:          rawURL,
+		ContentType:  resp.Header.Get("Content-Type"),
+		ETag:         resp.Header.Get("ETag"),
 		AcceptRanges: resp.Header.Get("Accept-Ranges") == "bytes",
 	}
 
@@ -235,7 +235,7 @@ func (c *HTTP3Client) Close() error {
 // IsHTTP3Available checks if HTTP/3 is supported by probing the server
 func IsHTTP3Available(ctx context.Context, rawURL string) bool {
 	client := NewHTTP3Client()
-	defer client.Close()
+	defer func() { _ = client.Close() }()
 
 	// Try a HEAD request
 	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)

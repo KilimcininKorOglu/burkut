@@ -16,14 +16,14 @@ import (
 
 // FTPClient is an FTP protocol adapter for downloading files
 type FTPClient struct {
-	timeout        time.Duration
-	username       string
-	password       string
-	passive        bool
-	useTLS         bool          // Enable explicit FTPS (AUTH TLS)
-	tlsConfig      *tls.Config   // Custom TLS configuration
-	implicitTLS    bool          // Use implicit TLS (port 990)
-	skipTLSVerify  bool          // Skip TLS certificate verification
+	timeout       time.Duration
+	username      string
+	password      string
+	passive       bool
+	useTLS        bool        // Enable explicit FTPS (AUTH TLS)
+	tlsConfig     *tls.Config // Custom TLS configuration
+	implicitTLS   bool        // Use implicit TLS (port 990)
+	skipTLSVerify bool        // Skip TLS certificate verification
 }
 
 // FTPClientOption is a function that configures FTPClient
@@ -142,7 +142,7 @@ func (c *FTPClient) connect(ctx context.Context, rawURL string) (*ftp.ServerConn
 		if tlsConfig == nil {
 			tlsConfig = &tls.Config{
 				MinVersion:         tls.VersionTLS12,
-				InsecureSkipVerify: c.skipTLSVerify,
+				InsecureSkipVerify: c.skipTLSVerify, // #nosec G402 -- gated behind explicit --no-check-certificate opt-in flag
 				ServerName:         parsed.Hostname(),
 			}
 		}
@@ -175,7 +175,7 @@ func (c *FTPClient) connect(ctx context.Context, rawURL string) (*ftp.ServerConn
 
 	// Login
 	if err := conn.Login(username, password); err != nil {
-		conn.Quit()
+		_ = conn.Quit()
 		return nil, "", fmt.Errorf("FTP login failed: %w", err)
 	}
 
@@ -194,7 +194,7 @@ func (c *FTPClient) Head(ctx context.Context, rawURL string) (*Metadata, error) 
 	if err != nil {
 		return nil, err
 	}
-	defer conn.Quit()
+	defer func() { _ = conn.Quit() }()
 
 	// Get file size
 	size, err := conn.FileSize(filepath)
@@ -235,14 +235,14 @@ func (c *FTPClient) Get(ctx context.Context, rawURL string) (io.ReadCloser, *Met
 	// Get metadata first
 	size, err := conn.FileSize(filepath)
 	if err != nil {
-		conn.Quit()
+		_ = conn.Quit()
 		return nil, nil, fmt.Errorf("getting file size: %w", err)
 	}
 
 	// Retrieve file
 	resp, err := conn.Retr(filepath)
 	if err != nil {
-		conn.Quit()
+		_ = conn.Quit()
 		return nil, nil, fmt.Errorf("retrieving file: %w", err)
 	}
 
@@ -277,20 +277,24 @@ func (c *FTPClient) GetRange(ctx context.Context, rawURL string, start, end int6
 	// Get file size for validation
 	size, err := conn.FileSize(filepath)
 	if err != nil {
-		conn.Quit()
+		_ = conn.Quit()
 		return nil, fmt.Errorf("getting file size: %w", err)
 	}
 
 	// Validate range
+	if start < 0 {
+		_ = conn.Quit()
+		return nil, fmt.Errorf("start offset %d must not be negative", start)
+	}
 	if start >= size {
-		conn.Quit()
+		_ = conn.Quit()
 		return nil, fmt.Errorf("start offset %d exceeds file size %d", start, size)
 	}
 
 	// Use REST command to set the starting offset
 	resp, err := conn.RetrFrom(filepath, uint64(start))
 	if err != nil {
-		conn.Quit()
+		_ = conn.Quit()
 		return nil, fmt.Errorf("retrieving file from offset: %w", err)
 	}
 
@@ -314,7 +318,7 @@ type ftpReadCloser struct {
 
 func (f *ftpReadCloser) Close() error {
 	err := f.ReadCloser.Close()
-	f.conn.Quit()
+	_ = f.conn.Quit()
 	return err
 }
 
@@ -331,7 +335,7 @@ func (f *ftpRangeReader) Read(p []byte) (int, error) {
 }
 
 func (f *ftpRangeReader) Close() error {
-	f.resp.Close()
-	f.conn.Quit()
+	_ = f.resp.Close()
+	_ = f.conn.Quit()
 	return nil
 }

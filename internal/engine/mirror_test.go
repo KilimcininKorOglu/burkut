@@ -79,7 +79,7 @@ func TestMirrorList_Next_RoundRobin(t *testing.T) {
 
 	// Should cycle through mirrors
 	urls := make([]string, 6)
-	for i := 0; i < 6; i++ {
+	for i := range 6 {
 		urls[i] = ml.Next().URL
 	}
 
@@ -201,7 +201,7 @@ func TestMirrorList_AllUnhealthy_Reset(t *testing.T) {
 	ml.Add("https://mirror1.example.com/file.zip")
 
 	// Mark as unhealthy
-	for i := 0; i < 3; i++ {
+	for range 3 {
 		ml.MarkFailed("https://mirror1.example.com/file.zip")
 	}
 

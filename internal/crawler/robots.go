@@ -110,7 +110,7 @@ func (r *RobotsChecker) getRobotsData(ctx context.Context, u *url.URL) (*RobotsD
 		r.mu.Unlock()
 		return nil, err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	// If not found or error, cache empty result
 	if resp.StatusCode != http.StatusOK {

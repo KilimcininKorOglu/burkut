@@ -1,8 +1,8 @@
 package engine
 
 import (
-	"crypto/md5"
-	"crypto/sha1"
+	"crypto/md5"  // #nosec G501 -- MD5 supported only for server-published checksum verification, not security
+	"crypto/sha1" // #nosec G505 -- SHA1 supported only for server-published checksum verification, not security
 	"crypto/sha256"
 	"crypto/sha512"
 	"encoding/hex"
@@ -75,9 +75,9 @@ func (c *Checksum) String() string {
 func newHasher(algorithm ChecksumAlgorithm) (hash.Hash, error) {
 	switch algorithm {
 	case AlgorithmMD5:
-		return md5.New(), nil
+		return md5.New(), nil // #nosec G401 -- MD5/SHA1 computed only to verify server-published checksums, not for security
 	case AlgorithmSHA1:
-		return sha1.New(), nil
+		return sha1.New(), nil // #nosec G401 -- MD5/SHA1 computed only to verify server-published checksums, not for security
 	case AlgorithmSHA256:
 		return sha256.New(), nil
 	case AlgorithmSHA512:
@@ -91,11 +91,11 @@ func newHasher(algorithm ChecksumAlgorithm) (hash.Hash, error) {
 
 // CalculateChecksum calculates the checksum of a file
 func CalculateChecksum(filepath string, algorithm ChecksumAlgorithm) (*Checksum, error) {
-	file, err := os.Open(filepath)
+	file, err := os.Open(filepath) // #nosec G304 -- path is an operator-supplied download/config/state target, not attacker-controlled input
 	if err != nil {
 		return nil, fmt.Errorf("opening file: %w", err)
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 
 	hasher, err := newHasher(algorithm)
 	if err != nil {
@@ -145,8 +145,8 @@ func VerifyChecksum(filepath string, expected *Checksum) (bool, error) {
 
 // ChecksumWriter wraps an io.Writer and calculates checksum while writing
 type ChecksumWriter struct {
-	writer io.Writer
-	hasher hash.Hash
+	writer    io.Writer
+	hasher    hash.Hash
 	algorithm ChecksumAlgorithm
 }
 
@@ -260,15 +260,15 @@ func FindChecksumFile(filepath string) (checksumFile string, algorithm ChecksumA
 //   - "checksum filename" (simple format)
 //   - Just "checksum" (single checksum for single file)
 func ParseChecksumFile(checksumFilePath string, targetFilename string) (string, error) {
-	data, err := os.ReadFile(checksumFilePath)
+	data, err := os.ReadFile(checksumFilePath) // #nosec G304 -- path is an operator-supplied download/config/state target, not attacker-controlled input
 	if err != nil {
 		return "", fmt.Errorf("reading checksum file: %w", err)
 	}
 
 	content := strings.TrimSpace(string(data))
-	lines := strings.Split(content, "\n")
+	lines := strings.SplitSeq(content, "\n")
 
-	for _, line := range lines {
+	for line := range lines {
 		line = strings.TrimSpace(line)
 		if line == "" || strings.HasPrefix(line, "#") {
 			continue
@@ -324,9 +324,9 @@ func FetchAndParseChecksumURL(checksumURL string, targetFilename string, httpGet
 	}
 
 	content := strings.TrimSpace(string(data))
-	lines := strings.Split(content, "\n")
+	lines := strings.SplitSeq(content, "\n")
 
-	for _, line := range lines {
+	for line := range lines {
 		line = strings.TrimSpace(line)
 		if line == "" || strings.HasPrefix(line, "#") {
 			continue

@@ -100,7 +100,7 @@ func TestHTTPClient_Get(t *testing.T) {
 		w.Header().Set("Content-Length", "14")
 		w.Header().Set("Content-Type", "text/plain")
 		w.WriteHeader(http.StatusOK)
-		w.Write(content)
+		_, _ = w.Write(content)
 	}))
 	defer server.Close()
 
@@ -111,7 +111,7 @@ func TestHTTPClient_Get(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Get() error = %v", err)
 	}
-	defer body.Close()
+	defer func() { _ = body.Close() }()
 
 	data, err := io.ReadAll(body)
 	if err != nil {
@@ -150,7 +150,7 @@ func TestHTTPClient_GetRange(t *testing.T) {
 		w.Header().Set("Content-Range", fmt.Sprintf("bytes %d-%d/%d", start, end, len(content)))
 		w.Header().Set("Content-Length", fmt.Sprintf("%d", end-start+1))
 		w.WriteHeader(http.StatusPartialContent)
-		w.Write(content[start : end+1])
+		_, _ = w.Write(content[start : end+1])
 	}))
 	defer server.Close()
 
@@ -162,7 +162,7 @@ func TestHTTPClient_GetRange(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GetRange() error = %v", err)
 	}
-	defer body.Close()
+	defer func() { _ = body.Close() }()
 
 	data, err := io.ReadAll(body)
 	if err != nil {
@@ -179,7 +179,7 @@ func TestHTTPClient_GetRange_NoSupport(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// Server ignores Range header and returns full content with 200 OK
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte("full content"))
+		_, _ = w.Write([]byte("full content"))
 	}))
 	defer server.Close()
 
@@ -545,5 +545,3 @@ func TestSanitizeFilename(t *testing.T) {
 		})
 	}
 }
-
-

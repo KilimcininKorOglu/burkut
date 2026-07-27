@@ -52,7 +52,7 @@ func TestRateLimiter_Acquire_Wait(t *testing.T) {
 	ctx := context.Background()
 
 	// Consume all burst tokens
-	rl.Acquire(ctx, 100)
+	_ = rl.Acquire(ctx, 100)
 
 	// Next acquire should wait
 	start := time.Now()
@@ -73,7 +73,7 @@ func TestRateLimiter_Acquire_Context(t *testing.T) {
 	defer cancel()
 
 	// Consume burst
-	rl.Acquire(ctx, 10)
+	_ = rl.Acquire(ctx, 10)
 
 	// This should timeout
 	err := rl.Acquire(ctx, 100)
@@ -199,7 +199,7 @@ func TestSharedRateLimiter(t *testing.T) {
 	srl := NewSharedRateLimiter(1024)
 
 	if srl == nil {
-		t.Error("NewSharedRateLimiter() returned nil")
+		t.Fatal("NewSharedRateLimiter() returned nil")
 	}
 
 	if srl.Limit() != 1024 {
@@ -257,7 +257,7 @@ func BenchmarkRateLimiter_Acquire(b *testing.B) {
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		rl.Acquire(ctx, 1024)
+		_ = rl.Acquire(ctx, 1024)
 	}
 }
 
@@ -270,7 +270,7 @@ func BenchmarkRateLimitedReader(b *testing.B) {
 	for i := 0; i < b.N; i++ {
 		reader := bytes.NewReader(content)
 		rr := NewRateLimitedReader(ctx, reader, rl)
-		io.Copy(io.Discard, rr)
+		_, _ = io.Copy(io.Discard, rr)
 	}
 }
 

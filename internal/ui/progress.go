@@ -13,11 +13,11 @@ import (
 
 // ProgressBar displays download progress in the terminal
 type ProgressBar struct {
-	output    io.Writer
-	width     int
+	output     io.Writer
+	width      int
 	showChunks bool
-	noColor   bool
-	lastLines int
+	noColor    bool
+	lastLines  int
 }
 
 // ProgressBarOption configures a ProgressBar
@@ -54,10 +54,10 @@ func WithNoColor(noColor bool) ProgressBarOption {
 // NewProgressBar creates a new ProgressBar
 func NewProgressBar(opts ...ProgressBarOption) *ProgressBar {
 	p := &ProgressBar{
-		output:    nil, // Will use os.Stdout by default in Render
-		width:     40,
+		output:     nil, // Will use os.Stdout by default in Render
+		width:      40,
 		showChunks: false,
-		noColor:   false,
+		noColor:    false,
 	}
 
 	for _, opt := range opts {
@@ -89,10 +89,10 @@ func (p *ProgressBar) Render(w io.Writer, progress engine.Progress, filename str
 		for i := 0; i < p.lastLines; i++ {
 			sb.WriteString(clearLine + "\r")
 			if i < p.lastLines-1 {
-				sb.WriteString(fmt.Sprintf(moveUp, 1))
+				fmt.Fprintf(&sb, moveUp, 1)
 			}
 		}
-		sb.WriteString(fmt.Sprintf(moveUp, p.lastLines-1))
+		fmt.Fprintf(&sb, moveUp, p.lastLines-1)
 	}
 
 	lines := 0
@@ -104,7 +104,7 @@ func (p *ProgressBar) Render(w io.Writer, progress engine.Progress, filename str
 	// Main progress bar
 	bar := p.renderBar(progress.Percent, p.width)
 	sizeStr := p.formatSize(progress.Downloaded, progress.TotalSize)
-	sb.WriteString(fmt.Sprintf("  %s %s\n", bar, sizeStr))
+	fmt.Fprintf(&sb, "  %s %s\n", bar, sizeStr)
 	lines++
 
 	// Stats line
@@ -112,10 +112,10 @@ func (p *ProgressBar) Render(w io.Writer, progress engine.Progress, filename str
 	etaStr := p.formatETA(progress.RemainingETA)
 	elapsedStr := p.formatDuration(progress.ElapsedTime)
 
-	sb.WriteString(fmt.Sprintf("  Speed: %s  |  ETA: %s  |  Elapsed: %s\n",
+	fmt.Fprintf(&sb, "  Speed: %s  |  ETA: %s  |  Elapsed: %s\n",
 		p.color(colorCyan, speedStr),
 		p.color(colorYellow, etaStr),
-		elapsedStr))
+		elapsedStr)
 	lines++
 
 	// Chunk progress (optional)
@@ -129,13 +129,13 @@ func (p *ProgressBar) Render(w io.Writer, progress engine.Progress, filename str
 			}
 			chunkBar := p.renderMiniBar(chunkPercent, 20)
 			statusIcon := p.chunkStatusIcon(chunk.Status)
-			sb.WriteString(fmt.Sprintf("  [Chunk %d: %s %s]\n", chunk.ID, chunkBar, statusIcon))
+			fmt.Fprintf(&sb, "  [Chunk %d: %s %s]\n", chunk.ID, chunkBar, statusIcon)
 			lines++
 		}
 	}
 
 	p.lastLines = lines
-	fmt.Fprint(w, sb.String())
+	_, _ = fmt.Fprint(w, sb.String())
 }
 
 // RenderComplete renders the completion message
@@ -143,12 +143,12 @@ func (p *ProgressBar) RenderComplete(w io.Writer, progress engine.Progress, file
 	// Clear progress display
 	if p.lastLines > 0 {
 		for i := 0; i < p.lastLines; i++ {
-			fmt.Fprintf(w, clearLine+"\r")
+			_, _ = fmt.Fprintf(w, clearLine+"\r")
 			if i < p.lastLines-1 {
-				fmt.Fprintf(w, moveUp, 1)
+				_, _ = fmt.Fprintf(w, moveUp, 1)
 			}
 		}
-		fmt.Fprintf(w, moveUp, p.lastLines-1)
+		_, _ = fmt.Fprintf(w, moveUp, p.lastLines-1)
 	}
 
 	// Print completion message
@@ -157,7 +157,7 @@ func (p *ProgressBar) RenderComplete(w io.Writer, progress engine.Progress, file
 	speedStr := p.formatSpeed(progress.Speed)
 	timeStr := p.formatDuration(progress.ElapsedTime)
 
-	fmt.Fprintf(w, "%s %s %s (%s, %s)\n",
+	_, _ = fmt.Fprintf(w, "%s %s %s (%s, %s)\n",
 		checkmark,
 		p.color(colorBold, filename),
 		p.color(colorGreen, "completed"),
@@ -172,16 +172,16 @@ func (p *ProgressBar) RenderError(w io.Writer, filename string, err error) {
 	// Clear progress display
 	if p.lastLines > 0 {
 		for i := 0; i < p.lastLines; i++ {
-			fmt.Fprintf(w, clearLine+"\r")
+			_, _ = fmt.Fprintf(w, clearLine+"\r")
 			if i < p.lastLines-1 {
-				fmt.Fprintf(w, moveUp, 1)
+				_, _ = fmt.Fprintf(w, moveUp, 1)
 			}
 		}
-		fmt.Fprintf(w, moveUp, p.lastLines-1)
+		_, _ = fmt.Fprintf(w, moveUp, p.lastLines-1)
 	}
 
 	cross := p.color(colorYellow, "✗")
-	fmt.Fprintf(w, "%s %s %s: %v\n",
+	_, _ = fmt.Fprintf(w, "%s %s %s: %v\n",
 		cross,
 		p.color(colorBold, filename),
 		p.color(colorYellow, "failed"),
@@ -318,7 +318,7 @@ func MinimalProgress(w io.Writer, progress engine.Progress, filename string) {
 		bar = "[" + strings.Repeat("=", filled) + ">" + strings.Repeat(" ", width-filled-1) + "]"
 	}
 
-	fmt.Fprintf(w, "\r%s: %.1f%% %s %s %s eta %s",
+	_, _ = fmt.Fprintf(w, "\r%s: %.1f%% %s %s %s eta %s",
 		filename,
 		progress.Percent,
 		bar,
@@ -339,7 +339,7 @@ type JSONProgress struct {
 
 // RenderJSON outputs progress as JSON line
 func RenderJSON(w io.Writer, progress engine.Progress, filename string) {
-	fmt.Fprintf(w, `{"filename":%q,"percent":%.1f,"downloaded":%d,"total":%d,"speed":%d,"eta":%d}`+"\n",
+	_, _ = fmt.Fprintf(w, `{"filename":%q,"percent":%.1f,"downloaded":%d,"total":%d,"speed":%d,"eta":%d}`+"\n",
 		filename,
 		progress.Percent,
 		progress.Downloaded,

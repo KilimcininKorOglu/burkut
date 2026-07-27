@@ -13,12 +13,12 @@ import (
 
 // Config represents the complete Burkut configuration
 type Config struct {
-	General   GeneralConfig   `yaml:"general"`
-	Bandwidth BandwidthConfig `yaml:"bandwidth"`
-	Proxy     ProxyConfig     `yaml:"proxy"`
-	TLS       TLSConfig       `yaml:"tls"`
-	Output    OutputConfig    `yaml:"output"`
-	Logging   LoggingConfig   `yaml:"logging"`
+	General   GeneralConfig      `yaml:"general"`
+	Bandwidth BandwidthConfig    `yaml:"bandwidth"`
+	Proxy     ProxyConfig        `yaml:"proxy"`
+	TLS       TLSConfig          `yaml:"tls"`
+	Output    OutputConfig       `yaml:"output"`
+	Logging   LoggingConfig      `yaml:"logging"`
 	Profiles  map[string]Profile `yaml:"profiles,omitempty"`
 }
 
@@ -34,8 +34,8 @@ type GeneralConfig struct {
 
 // BandwidthConfig holds bandwidth control settings
 type BandwidthConfig struct {
-	GlobalLimit  string            `yaml:"global_limit"`  // e.g., "10M", "500K"
-	PerHostLimit string            `yaml:"per_host_limit"` // Default per-host limit
+	GlobalLimit  string            `yaml:"global_limit"`          // e.g., "10M", "500K"
+	PerHostLimit string            `yaml:"per_host_limit"`        // Default per-host limit
 	HostLimits   []HostLimitConfig `yaml:"host_limits,omitempty"` // Specific host limits
 	Adaptive     bool              `yaml:"adaptive"`
 }
@@ -67,7 +67,7 @@ type OutputConfig struct {
 	Directory     string `yaml:"directory"`
 	ProgressStyle string `yaml:"progress_style"` // bar, minimal, json
 	Colors        bool   `yaml:"colors"`
-	Theme         string `yaml:"theme"` // auto, dark, light, mono
+	Theme         string `yaml:"theme"`   // auto, dark, light, mono
 	UseTUI        bool   `yaml:"use_tui"` // Use interactive TUI mode by default
 }
 
@@ -80,8 +80,8 @@ type LoggingConfig struct {
 
 // Profile represents a named configuration profile
 type Profile struct {
-	Connections int             `yaml:"connections,omitempty"`
-	Timeout     time.Duration   `yaml:"timeout,omitempty"`
+	Connections int              `yaml:"connections,omitempty"`
+	Timeout     time.Duration    `yaml:"timeout,omitempty"`
 	Bandwidth   *BandwidthConfig `yaml:"bandwidth,omitempty"`
 	Proxy       *ProxyConfig     `yaml:"proxy,omitempty"`
 }
@@ -194,13 +194,13 @@ func createDefaultConfig() error {
 
 	// Create config directory if needed
 	configDir := filepath.Dir(configPath)
-	if err := os.MkdirAll(configDir, 0755); err != nil {
+	if err := os.MkdirAll(configDir, 0755); err != nil { // #nosec G301 -- output directories are intentionally traversable (0755 by design)
 		return fmt.Errorf("creating config directory: %w", err)
 	}
 
 	// Write default config
 	content := GenerateDefaultConfig()
-	if err := os.WriteFile(configPath, []byte(content), 0644); err != nil {
+	if err := os.WriteFile(configPath, []byte(content), 0644); err != nil { // #nosec G306 -- downloaded/config files are intentionally readable (0644 by design)
 		return fmt.Errorf("writing config file: %w", err)
 	}
 
@@ -210,7 +210,7 @@ func createDefaultConfig() error {
 
 // LoadFile loads configuration from a specific file
 func (c *Config) LoadFile(path string) error {
-	data, err := os.ReadFile(path)
+	data, err := os.ReadFile(path) // #nosec G304 -- path is an operator-supplied download/config/state target, not attacker-controlled input
 	if err != nil {
 		return fmt.Errorf("reading config file: %w", err)
 	}
@@ -226,7 +226,7 @@ func (c *Config) LoadFile(path string) error {
 func (c *Config) Save(path string) error {
 	// Ensure directory exists
 	dir := filepath.Dir(path)
-	if err := os.MkdirAll(dir, 0755); err != nil {
+	if err := os.MkdirAll(dir, 0755); err != nil { // #nosec G301 -- output directories are intentionally traversable (0755 by design)
 		return fmt.Errorf("creating config directory: %w", err)
 	}
 
@@ -235,7 +235,7 @@ func (c *Config) Save(path string) error {
 		return fmt.Errorf("marshaling config: %w", err)
 	}
 
-	if err := os.WriteFile(path, data, 0644); err != nil {
+	if err := os.WriteFile(path, data, 0644); err != nil { // #nosec G306 -- downloaded/config files are intentionally readable (0644 by design)
 		return fmt.Errorf("writing config file: %w", err)
 	}
 
@@ -303,7 +303,7 @@ func ParseBandwidth(s string) (int64, error) {
 		return int64(value), nil
 	}
 
-	multiplier := int64(1)
+	var multiplier int64
 	switch unit {
 	case "K", "k", "KB", "kb":
 		multiplier = 1024

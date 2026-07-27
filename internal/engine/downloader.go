@@ -146,7 +146,7 @@ func (d *Downloader) Download(ctx context.Context, url, outputPath string) error
 	if err != nil {
 		return fmt.Errorf("creating file writer: %w", err)
 	}
-	defer d.writer.Close()
+	defer func() { _ = d.writer.Close() }()
 
 	// Record start time
 	d.startTime = time.Now()
@@ -162,16 +162,16 @@ func (d *Downloader) Download(ctx context.Context, url, outputPath string) error
 	// Download chunks
 	if err := d.downloadChunks(ctx, url); err != nil {
 		// Save state on error for resume
-		d.state.Save(outputPath)
+		_ = d.state.Save(outputPath)
 		return err
 	}
 
 	// Download complete - remove state file
-	download.DeleteState(outputPath)
+	_ = download.DeleteState(outputPath)
 
 	// Truncate file to exact size if known
 	if meta.ContentLength > 0 {
-		d.writer.Truncate(meta.ContentLength)
+		_ = d.writer.Truncate(meta.ContentLength)
 	}
 
 	close(d.doneChan)
@@ -245,7 +245,7 @@ func (d *Downloader) downloadChunk(ctx context.Context, url string, chunk downlo
 		d.state.UpdateChunk(chunk.ID, chunk.Downloaded, download.ChunkStatusFailed)
 		return err
 	}
-	defer reader.Close()
+	defer func() { _ = reader.Close() }()
 
 	// Download with buffer
 	buffer := make([]byte, d.config.BufferSize)
@@ -329,7 +329,7 @@ func (d *Downloader) stateSaver(ctx context.Context) {
 		case <-d.doneChan:
 			return
 		case <-ticker.C:
-			d.state.Save(d.outputPath)
+			_ = d.state.Save(d.outputPath)
 		}
 	}
 }
@@ -350,13 +350,13 @@ func (d *Downloader) GetProgress() Progress {
 		deltaTime := now.Sub(d.lastTime)
 		if deltaTime > 0 {
 			instantSpeed := float64(deltaBytes) / deltaTime.Seconds()
-			
+
 			// Add to samples for smoothing
 			if len(d.speedSamples) >= 10 {
 				d.speedSamples = d.speedSamples[1:]
 			}
 			d.speedSamples = append(d.speedSamples, int64(instantSpeed))
-			
+
 			// Calculate average speed
 			var total int64
 			for _, s := range d.speedSamples {

@@ -12,15 +12,15 @@ import (
 // Metrics holds all download metrics
 type Metrics struct {
 	// Counters
-	downloadsTotal      int64 // Total number of downloads started
-	downloadsCompleted  int64 // Successfully completed downloads
-	downloadsFailed     int64 // Failed downloads
-	bytesDownloadedTotal int64 // Total bytes downloaded
+	downloadsTotal       atomic.Int64 // Total number of downloads started
+	downloadsCompleted   atomic.Int64 // Successfully completed downloads
+	downloadsFailed      atomic.Int64 // Failed downloads
+	bytesDownloadedTotal atomic.Int64 // Total bytes downloaded
 
 	// Gauges
-	activeDownloads     int64 // Currently active downloads
-	activeConnections   int64 // Currently active connections
-	currentSpeed        int64 // Current download speed (bytes/sec)
+	activeDownloads   atomic.Int64 // Currently active downloads
+	activeConnections atomic.Int64 // Currently active connections
+	currentSpeed      atomic.Int64 // Current download speed (bytes/sec)
 
 	// Histogram buckets for download duration
 	durationBuckets map[string]int64 // bucket label -> count
@@ -36,59 +36,59 @@ func New() *Metrics {
 	return &Metrics{
 		startTime: time.Now(),
 		durationBuckets: map[string]int64{
-			"le_1s":    0,
-			"le_5s":    0,
-			"le_30s":   0,
-			"le_60s":   0,
-			"le_300s":  0,
-			"le_inf":   0,
+			"le_1s":   0,
+			"le_5s":   0,
+			"le_30s":  0,
+			"le_60s":  0,
+			"le_300s": 0,
+			"le_inf":  0,
 		},
 	}
 }
 
 // IncDownloadsTotal increments the total downloads counter
 func (m *Metrics) IncDownloadsTotal() {
-	atomic.AddInt64(&m.downloadsTotal, 1)
+	m.downloadsTotal.Add(1)
 }
 
 // IncDownloadsCompleted increments the completed downloads counter
 func (m *Metrics) IncDownloadsCompleted() {
-	atomic.AddInt64(&m.downloadsCompleted, 1)
+	m.downloadsCompleted.Add(1)
 }
 
 // IncDownloadsFailed increments the failed downloads counter
 func (m *Metrics) IncDownloadsFailed() {
-	atomic.AddInt64(&m.downloadsFailed, 1)
+	m.downloadsFailed.Add(1)
 }
 
 // AddBytesDownloaded adds to the total bytes downloaded
 func (m *Metrics) AddBytesDownloaded(bytes int64) {
-	atomic.AddInt64(&m.bytesDownloadedTotal, bytes)
+	m.bytesDownloadedTotal.Add(bytes)
 }
 
 // SetActiveDownloads sets the number of active downloads
 func (m *Metrics) SetActiveDownloads(count int64) {
-	atomic.StoreInt64(&m.activeDownloads, count)
+	m.activeDownloads.Store(count)
 }
 
 // IncActiveDownloads increments active downloads
 func (m *Metrics) IncActiveDownloads() {
-	atomic.AddInt64(&m.activeDownloads, 1)
+	m.activeDownloads.Add(1)
 }
 
 // DecActiveDownloads decrements active downloads
 func (m *Metrics) DecActiveDownloads() {
-	atomic.AddInt64(&m.activeDownloads, -1)
+	m.activeDownloads.Add(-1)
 }
 
 // SetActiveConnections sets the number of active connections
 func (m *Metrics) SetActiveConnections(count int64) {
-	atomic.StoreInt64(&m.activeConnections, count)
+	m.activeConnections.Store(count)
 }
 
 // SetCurrentSpeed sets the current download speed
 func (m *Metrics) SetCurrentSpeed(bytesPerSec int64) {
-	atomic.StoreInt64(&m.currentSpeed, bytesPerSec)
+	m.currentSpeed.Store(bytesPerSec)
 }
 
 // RecordDownloadDuration records a download duration in the histogram
@@ -119,14 +119,14 @@ func (m *Metrics) GetStats() map[string]int64 {
 	defer m.mu.RUnlock()
 
 	stats := map[string]int64{
-		"downloads_total":       atomic.LoadInt64(&m.downloadsTotal),
-		"downloads_completed":   atomic.LoadInt64(&m.downloadsCompleted),
-		"downloads_failed":      atomic.LoadInt64(&m.downloadsFailed),
-		"bytes_downloaded_total": atomic.LoadInt64(&m.bytesDownloadedTotal),
-		"active_downloads":      atomic.LoadInt64(&m.activeDownloads),
-		"active_connections":    atomic.LoadInt64(&m.activeConnections),
-		"current_speed":         atomic.LoadInt64(&m.currentSpeed),
-		"uptime_seconds":        int64(time.Since(m.startTime).Seconds()),
+		"downloads_total":        m.downloadsTotal.Load(),
+		"downloads_completed":    m.downloadsCompleted.Load(),
+		"downloads_failed":       m.downloadsFailed.Load(),
+		"bytes_downloaded_total": m.bytesDownloadedTotal.Load(),
+		"active_downloads":       m.activeDownloads.Load(),
+		"active_connections":     m.activeConnections.Load(),
+		"current_speed":          m.currentSpeed.Load(),
+		"uptime_seconds":         int64(time.Since(m.startTime).Seconds()),
 	}
 
 	// Add histogram buckets
@@ -146,47 +146,47 @@ func (m *Metrics) Handler() http.Handler {
 		stats := m.GetStats()
 
 		// Write Prometheus format metrics
-		fmt.Fprintln(w, "# HELP burkut_downloads_total Total number of downloads started")
-		fmt.Fprintln(w, "# TYPE burkut_downloads_total counter")
-		fmt.Fprintf(w, "burkut_downloads_total %d\n", stats["downloads_total"])
+		_, _ = fmt.Fprintln(w, "# HELP burkut_downloads_total Total number of downloads started")
+		_, _ = fmt.Fprintln(w, "# TYPE burkut_downloads_total counter")
+		_, _ = fmt.Fprintf(w, "burkut_downloads_total %d\n", stats["downloads_total"])
 
-		fmt.Fprintln(w, "# HELP burkut_downloads_completed_total Successfully completed downloads")
-		fmt.Fprintln(w, "# TYPE burkut_downloads_completed_total counter")
-		fmt.Fprintf(w, "burkut_downloads_completed_total %d\n", stats["downloads_completed"])
+		_, _ = fmt.Fprintln(w, "# HELP burkut_downloads_completed_total Successfully completed downloads")
+		_, _ = fmt.Fprintln(w, "# TYPE burkut_downloads_completed_total counter")
+		_, _ = fmt.Fprintf(w, "burkut_downloads_completed_total %d\n", stats["downloads_completed"])
 
-		fmt.Fprintln(w, "# HELP burkut_downloads_failed_total Failed downloads")
-		fmt.Fprintln(w, "# TYPE burkut_downloads_failed_total counter")
-		fmt.Fprintf(w, "burkut_downloads_failed_total %d\n", stats["downloads_failed"])
+		_, _ = fmt.Fprintln(w, "# HELP burkut_downloads_failed_total Failed downloads")
+		_, _ = fmt.Fprintln(w, "# TYPE burkut_downloads_failed_total counter")
+		_, _ = fmt.Fprintf(w, "burkut_downloads_failed_total %d\n", stats["downloads_failed"])
 
-		fmt.Fprintln(w, "# HELP burkut_bytes_downloaded_total Total bytes downloaded")
-		fmt.Fprintln(w, "# TYPE burkut_bytes_downloaded_total counter")
-		fmt.Fprintf(w, "burkut_bytes_downloaded_total %d\n", stats["bytes_downloaded_total"])
+		_, _ = fmt.Fprintln(w, "# HELP burkut_bytes_downloaded_total Total bytes downloaded")
+		_, _ = fmt.Fprintln(w, "# TYPE burkut_bytes_downloaded_total counter")
+		_, _ = fmt.Fprintf(w, "burkut_bytes_downloaded_total %d\n", stats["bytes_downloaded_total"])
 
-		fmt.Fprintln(w, "# HELP burkut_active_downloads Currently active downloads")
-		fmt.Fprintln(w, "# TYPE burkut_active_downloads gauge")
-		fmt.Fprintf(w, "burkut_active_downloads %d\n", stats["active_downloads"])
+		_, _ = fmt.Fprintln(w, "# HELP burkut_active_downloads Currently active downloads")
+		_, _ = fmt.Fprintln(w, "# TYPE burkut_active_downloads gauge")
+		_, _ = fmt.Fprintf(w, "burkut_active_downloads %d\n", stats["active_downloads"])
 
-		fmt.Fprintln(w, "# HELP burkut_active_connections Currently active connections")
-		fmt.Fprintln(w, "# TYPE burkut_active_connections gauge")
-		fmt.Fprintf(w, "burkut_active_connections %d\n", stats["active_connections"])
+		_, _ = fmt.Fprintln(w, "# HELP burkut_active_connections Currently active connections")
+		_, _ = fmt.Fprintln(w, "# TYPE burkut_active_connections gauge")
+		_, _ = fmt.Fprintf(w, "burkut_active_connections %d\n", stats["active_connections"])
 
-		fmt.Fprintln(w, "# HELP burkut_download_speed_bytes Current download speed in bytes per second")
-		fmt.Fprintln(w, "# TYPE burkut_download_speed_bytes gauge")
-		fmt.Fprintf(w, "burkut_download_speed_bytes %d\n", stats["current_speed"])
+		_, _ = fmt.Fprintln(w, "# HELP burkut_download_speed_bytes Current download speed in bytes per second")
+		_, _ = fmt.Fprintln(w, "# TYPE burkut_download_speed_bytes gauge")
+		_, _ = fmt.Fprintf(w, "burkut_download_speed_bytes %d\n", stats["current_speed"])
 
-		fmt.Fprintln(w, "# HELP burkut_uptime_seconds Time since start in seconds")
-		fmt.Fprintln(w, "# TYPE burkut_uptime_seconds counter")
-		fmt.Fprintf(w, "burkut_uptime_seconds %d\n", stats["uptime_seconds"])
+		_, _ = fmt.Fprintln(w, "# HELP burkut_uptime_seconds Time since start in seconds")
+		_, _ = fmt.Fprintln(w, "# TYPE burkut_uptime_seconds counter")
+		_, _ = fmt.Fprintf(w, "burkut_uptime_seconds %d\n", stats["uptime_seconds"])
 
 		// Duration histogram
-		fmt.Fprintln(w, "# HELP burkut_download_duration_seconds_bucket Download duration histogram")
-		fmt.Fprintln(w, "# TYPE burkut_download_duration_seconds_bucket histogram")
-		fmt.Fprintf(w, "burkut_download_duration_seconds_bucket{le=\"1\"} %d\n", stats["download_duration_seconds_bucket_le_1s"])
-		fmt.Fprintf(w, "burkut_download_duration_seconds_bucket{le=\"5\"} %d\n", stats["download_duration_seconds_bucket_le_5s"])
-		fmt.Fprintf(w, "burkut_download_duration_seconds_bucket{le=\"30\"} %d\n", stats["download_duration_seconds_bucket_le_30s"])
-		fmt.Fprintf(w, "burkut_download_duration_seconds_bucket{le=\"60\"} %d\n", stats["download_duration_seconds_bucket_le_60s"])
-		fmt.Fprintf(w, "burkut_download_duration_seconds_bucket{le=\"300\"} %d\n", stats["download_duration_seconds_bucket_le_300s"])
-		fmt.Fprintf(w, "burkut_download_duration_seconds_bucket{le=\"+Inf\"} %d\n", stats["download_duration_seconds_bucket_le_inf"])
+		_, _ = fmt.Fprintln(w, "# HELP burkut_download_duration_seconds_bucket Download duration histogram")
+		_, _ = fmt.Fprintln(w, "# TYPE burkut_download_duration_seconds_bucket histogram")
+		_, _ = fmt.Fprintf(w, "burkut_download_duration_seconds_bucket{le=\"1\"} %d\n", stats["download_duration_seconds_bucket_le_1s"])
+		_, _ = fmt.Fprintf(w, "burkut_download_duration_seconds_bucket{le=\"5\"} %d\n", stats["download_duration_seconds_bucket_le_5s"])
+		_, _ = fmt.Fprintf(w, "burkut_download_duration_seconds_bucket{le=\"30\"} %d\n", stats["download_duration_seconds_bucket_le_30s"])
+		_, _ = fmt.Fprintf(w, "burkut_download_duration_seconds_bucket{le=\"60\"} %d\n", stats["download_duration_seconds_bucket_le_60s"])
+		_, _ = fmt.Fprintf(w, "burkut_download_duration_seconds_bucket{le=\"300\"} %d\n", stats["download_duration_seconds_bucket_le_300s"])
+		_, _ = fmt.Fprintf(w, "burkut_download_duration_seconds_bucket{le=\"+Inf\"} %d\n", stats["download_duration_seconds_bucket_le_inf"])
 	})
 }
 
@@ -202,7 +202,7 @@ func NewServer(addr string, m *Metrics) *Server {
 	mux.Handle("/metrics", m.Handler())
 	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte("OK"))
+		_, _ = w.Write([]byte("OK"))
 	})
 
 	return &Server{
